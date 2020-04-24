@@ -1,11 +1,17 @@
 # GLAS Instructions
+# https://arxiv.org/pdf/2002.11807.pdf
 1. Install the necessary dependencies with conda:
     ```bash
     conda env create --file environment.yml
     conda activate glas_env
     ```
-2. Create Training Dataset (in ~/data)
+
+# example process for singleintegrator, same command for doubleintegrator
+2. create training dataset 
     ```bash
+    # make instance files (in ~/data/singleintegrator)
+    # temp
+    # run central planner solution 
 	python runAll.py 
     ```
 3. train policy with Imitation Learning (in ~/results)
