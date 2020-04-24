@@ -47,7 +47,7 @@ if __name__ == "__main__":
   # datadir = glob.glob("instances/*obst06_agents032*.yaml")
 
   import random
-  datadir = glob.glob("instances3/*.yaml")
+  datadir = glob.glob("instances/*.yaml")
   random.shuffle(datadir)
 
   # files = glob.glob("instances/*obst6_agents4*.yaml")

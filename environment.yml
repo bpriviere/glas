@@ -51,5 +51,5 @@ dependencies:
     - torch==1.3.1
     - tornado==6.0.3
     - u-msgpack-python==2.5.2
-prefix: /home/ben/anaconda3/envs/neural_pid_env
+prefix: /home/ben/anaconda3/envs/glas_env
 

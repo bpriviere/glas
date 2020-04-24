@@ -5,7 +5,6 @@ sys.path.insert(1, os.path.join(os.getcwd(),'.'))
 import argparse
 import torch
 
-from train_rl import train_rl
 from train_il import train_il
 from sim import sim
 from planning.rrt import rrt

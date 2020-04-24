@@ -5,14 +5,12 @@
     conda env create --file environment.yml
     conda activate glas_env
     ```
-
-# example process for singleintegrator, same command for doubleintegrator
 2. create training dataset 
     ```bash
-    # make instance files (in ~/data/singleintegrator)
-    # temp
-    # run central planner solution 
-	python runAll.py 
+    # make instance files (in ~/data/singleintegrator/instances)
+    python ../../baseline/centralized-planner/genRandomMAPF.py
+    # run central planner solution (in ~/data/singleintegrator/)
+	python runAll.py --central 
     ```
 3. train policy with Imitation Learning (in ~/results)
     ```bash

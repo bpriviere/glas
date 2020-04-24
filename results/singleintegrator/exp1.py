@@ -166,7 +166,7 @@ if __name__ == "__main__":
   first_training = False
 
 
-  for i in range(10):
+  for i in range(1):
       # train policy
       param = run_singleintegrator.SingleIntegratorParam()
       env = SingleIntegrator(param)
