@@ -1,0 +1,55 @@
+name: glas_env
+channels:
+  - http://conda.anaconda.org/gurobi
+  - defaults
+dependencies:
+  - _libgcc_mutex=0.1=main
+  - ca-certificates=2019.11.27=0
+  - certifi=2019.11.28=py36_0
+  - libedit=3.1.20181209=hc058e9b_0
+  - libffi=3.2.1=hd88cf55_4
+  - libgcc-ng=9.1.0=hdf63c60_0
+  - libstdcxx-ng=9.1.0=hdf63c60_0
+  - ncurses=6.1=he6710b0_1
+  - openssl=1.1.1d=h7b6447c_3
+  - pip=19.3.1=py36_0
+  - python=3.6.9=h265db76_0
+  - readline=7.0=h7b6447c_5
+  - setuptools=42.0.2=py36_0
+  - sqlite=3.30.1=h7b6447c_0
+  - tk=8.6.8=hbc83047_0
+  - wheel=0.33.6=py36_0
+  - xz=5.2.4=h14c3975_4
+  - zlib=1.2.11=h7b6447c_3
+  - pip:
+    - autograd==1.3
+    - cloudpickle==1.2.2
+    - cvxpy==1.0.25
+    - cycler==0.10.0
+    - dill==0.3.1.1
+    - ecos==2.0.7.post1
+    - future==0.18.2
+    - gym==0.15.4
+    - hnswlib==0.3.2.0
+    - kiwisolver==1.1.0
+    - matplotlib==3.1.2
+    - meshcat==0.0.16
+    - multiprocess==0.70.9
+    - numpy==1.17.4
+    - opencv-python==4.1.2.30
+    - osqp==0.6.1
+    - pybind11==2.4.3
+    - pyglet==1.3.2
+    - pyparsing==2.4.5
+    - python-dateutil==2.8.1
+    - pyyaml==5.2
+    - pyzmq==18.1.1
+    - rowan==1.2.2
+    - scipy==1.3.3
+    - scs==2.1.1-2
+    - six==1.13.0
+    - torch==1.3.1
+    - tornado==6.0.3
+    - u-msgpack-python==2.5.2
+prefix: /home/ben/anaconda3/envs/neural_pid_env
+

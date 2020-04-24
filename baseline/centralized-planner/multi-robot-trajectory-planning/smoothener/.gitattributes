@@ -1,0 +1,10 @@
+*csolve.c linguist-generated=true
+*csolve.m linguist-generated=true
+*cvxsolve.m linguist-generated=true
+*ldl.c linguist-generated=true
+*make_csolve.m linguist-generated=true
+*matrix_support.c linguist-generated=true
+*solver.c linguist-generated=true
+*solver.h linguist-generated=true
+*testsolver.c linguist-generated=true
+*util.c linguist-generated=true

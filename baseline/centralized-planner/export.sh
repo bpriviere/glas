@@ -1,0 +1,1 @@
+python3 exportTrajectories.py multi-robot-trajectory-planning/examples/ground/output/pps/ multi-robot-trajectory-planning/examples/ground/types.yaml $1 $2

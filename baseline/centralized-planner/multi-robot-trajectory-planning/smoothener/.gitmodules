@@ -1,0 +1,6 @@
+[submodule "external/libsvm"]
+	path = external/libsvm
+	url = https://github.com/cjlin1/libsvm.git
+[submodule "external/yamlmatlab"]
+	path = external/yamlmatlab
+	url = https://github.com/ewiger/yamlmatlab.git

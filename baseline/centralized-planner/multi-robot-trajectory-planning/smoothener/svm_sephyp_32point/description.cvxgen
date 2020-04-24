@@ -1,0 +1,28 @@
+# Produced by CVXGEN, 2016-11-30 16:59:55 -0500.
+# CVXGEN is Copyright (C) 2006-2012 Jacob Mattingley, jem@cvxgen.com.
+# The code in this file is Copyright (C) 2006-2012 Jacob Mattingley.
+# CVXGEN, or solvers produced by CVXGEN, cannot be used for commercial
+# applications without prior written permission from Jacob Mattingley.
+
+# Filename: description.cvxgen.
+# Description: A description of the CVXGEN problem.
+
+dimensions
+  dim = 3
+  npts = 64
+end
+
+parameters
+  A(npts, dim+1)
+  Q(dim+1, dim+1) diagonal psd
+end
+
+variables
+  beta (dim + 1)
+end
+
+minimize
+  quad(beta, Q)
+subject to
+  A*beta <= -1
+end

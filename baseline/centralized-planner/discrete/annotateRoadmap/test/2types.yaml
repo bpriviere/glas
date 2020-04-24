@@ -1,0 +1,27 @@
+agentTypes:
+  - type: small
+    roadmap: "./rm1.yaml"
+    above: 0.1
+    below: 0.1
+    radius: 0.15
+  - type: medium
+    roadmap: "./rm2.yaml"
+    above: 0.2
+    below: 0.2
+    radius: 0.4
+agentInteractions:
+  - typeA: small
+    typeB: small
+    above: 0.30
+    below: 0.30
+    radius: 0.15
+  - typeA: small
+    typeB: medium
+    above: 0.30
+    below: 0.75
+    radius: 0.40
+  - typeA: medium
+    typeB: medium
+    above: 0.30
+    below: 0.60
+    radius: 0.5
