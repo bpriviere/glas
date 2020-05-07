@@ -1,8 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import meshcat
-import meshcat.geometry as g
-import meshcat.transformations as tf
 import time
 import argparse
 import yaml
@@ -59,6 +56,9 @@ if __name__ == '__main__':
 	plt.show()
 
 	if args.animate:
+		import meshcat
+		import meshcat.geometry as g
+		import meshcat.transformations as tf
 		# Create a new visualizer
 		vis = meshcat.Visualizer()
 		vis.open()
