@@ -44,7 +44,7 @@ def plot_policy_vector_field(fig,ax,policy,map_data,data,i,param):
 			if not collision((x,y),obstacles):
 
 				o_xy = get_observation_i_at_xy_from_data(data,map_data,x,y,i,param)
-				a = policy.policy(o_xy,transformation)
+				a = policy.policy(o_xy)
 
 				U[i_y,i_x] = a[0][0]
 				V[i_y,i_x] = a[0][1]
@@ -138,7 +138,8 @@ if __name__ == '__main__':
 	env = SingleIntegrator(param)
 
 	if args.barrier:
-		policy_fn = '../models/singleintegrator/barrier.pt'
+		# policy_fn = '../models/singleintegrator/barrier.pt'
+		policy_fn = '../results/singleintegrator/empty_2/il_current.pt'
 		policy = torch.load(policy_fn)
 	elif args.empty:
 		policy_fn = '../models/singleintegrator/empty.pt'
@@ -184,7 +185,7 @@ if __name__ == '__main__':
 	
 	t_idx = np.arange(0,data.shape[0],100)
 	# t_array = data[t_idx,0]
-	t_array = [0]
+	t_array = [1000]
 
 	for t in t_array:
 

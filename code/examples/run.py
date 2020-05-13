@@ -16,7 +16,6 @@ def parse_args():
 	parser.add_argument("-i", "--instance", help="File instance to run simulation on")
 	parser.add_argument("--batch", action='store_true', help="use batch (npy) output instead of interactive (pdf) output")
 	parser.add_argument("--export", action='store_true', help="export IL model to onnx")
-
 	parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
 	args = parser.parse_args()
 	return args

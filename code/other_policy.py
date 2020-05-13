@@ -1,5 +1,5 @@
 
-
+import torch 
 import numpy as np 
 import cvxpy as cp
 from cvxpy.atoms.norm_inf import norm_inf
@@ -7,7 +7,8 @@ from collections import namedtuple
 
 
 from utilities import torch_tile, min_dist_circle_rectangle, torch_min_point_circle_rectangle, min_point_circle_rectangle
-import torch 
+from barrier_fncs import Barrier_Fncs
+
 
 # motion planning 
 
@@ -15,8 +16,10 @@ class Empty_Net_wAPF():
 
 	def __init__(self,param,env,empty):
 
+		self.env = env
 		self.empty = empty
 		self.param = param 
+		self.bf = Barrier_Fncs(param)
 		self.device = torch.device('cpu')
 		self.dim_neighbor = param.il_phi_network_architecture[0].in_features
 		self.dim_action = param.il_psi_network_architecture[-1].out_features
@@ -27,156 +30,219 @@ class Empty_Net_wAPF():
 
 	def __call__(self,x):
 
-		if type(x) is np.ndarray:
+		if type(x) == torch.Tensor:
 
-			if self.param.safety is "potential":
+			if self.param.safety == "potential":
+				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
+				barrier_action = -1*self.param.kp*self.bf.torch_get_grad_phi(x,P,H)
+				
+				empty_action = self.empty(x)
+				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
+				
+				adaptive_scaling = self.bf.torch_get_adaptive_scaling_si(x,empty_action,barrier_action,P,H)
+				action = torch.mul(adaptive_scaling,empty_action)+barrier_action 
+				action = self.bf.torch_scale(action, self.param.a_max)
 
-				P,H = self.numpy_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.numpy_get_barrier_action(x,P,H)
+			elif self.param.safety == "fdbk_si":
+				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.torch_fdbk_si(x,P,H)
+								
+				empty_action = self.empty(x)
+				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
+				
+				adaptive_scaling = self.bf.torch_get_adaptive_scaling_si(x,empty_action,barrier_action,P,H)
+				action = torch.mul(adaptive_scaling,empty_action)+barrier_action 
+				action = self.bf.torch_scale(action, self.param.a_max)				
+
+			elif self.param.safety == "fdbk_di":
+				
+				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.torch_fdbk_di(x,P,H)
+								
+				empty_action = self.empty(x)
+				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
+				
+				adaptive_scaling = self.bf.torch_get_adaptive_scaling_di(x,empty_action,barrier_action,P,H)
+				action = torch.mul(adaptive_scaling,empty_action)+barrier_action 
+				action = self.bf.torch_scale(action, self.param.a_max)
+
+			elif self.param.safety == "cf_si":
+
+				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.torch_fdbk_si(x,P,H)
+
+				empty_action = self.empty(x)
+				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
+
+				cf_alpha = self.bf.torch_get_cf_si(x,P,H,empty_action,barrier_action)
+				action = torch.mul(cf_alpha,empty_action) + torch.mul(1-cf_alpha,barrier_action)
+				action = self.bf.torch_scale(action, self.param.a_max)
+
+			elif self.param.safety == "cf_si_2":
+
+				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.torch_fdbk_si(x,P,H)
+
+				empty_action = self.empty(x)
+				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
+
+				cf_alpha = self.bf.torch_get_cf_si_2(x,empty_action,barrier_action,P,H)
+				action = torch.mul(cf_alpha,empty_action) + torch.mul(1-cf_alpha,barrier_action)
+				action = self.bf.torch_scale(action, self.param.a_max)				
+
+			elif self.param.safety == "cf_di":
+
+				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.torch_fdbk_di(x,P,H)
+
+				empty_action = self.empty(x)
+				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
+
+				cf_alpha = self.bf.torch_get_cf_di(x,P,H,empty_action,barrier_action)
+				action = torch.mul(cf_alpha,empty_action) + torch.mul(1-cf_alpha,barrier_action)
+				action = self.bf.torch_scale(action, self.param.a_max)
+
+			elif self.param.safety == "cf_di_2":
+
+				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.torch_fdbk_di(x,P,H)
+
+				empty_action = self.empty(x)
+				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
+
+				cf_alpha = self.bf.torch_get_cf_di_2(x,empty_action,barrier_action,P,H)
+				action = torch.mul(cf_alpha,empty_action) + torch.mul(1-cf_alpha,barrier_action)
+				action = self.bf.torch_scale(action, self.param.a_max)
+
+			else:
+				exit('self.param.safety: {} not recognized'.format(self.param.safety))
+
+		elif type(x) is np.ndarray:
+
+			if self.param.safety == "potential":
+				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
+				barrier_action = -1*self.param.b_gamma*self.bf.numpy_get_grad_phi(x,P,H)
+
 				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
-				empty_action = self.numpy_scale(empty_action, self.param.pi_max)
-				adaptive_scaling = self.numpy_get_adaptive_scaling(x,empty_action,barrier_action,P,H)
+				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
+
+				adaptive_scaling = self.bf.numpy_get_adaptive_scaling_si(x,empty_action,barrier_action,P,H)
 				action = adaptive_scaling*empty_action+barrier_action 
-				action = self.numpy_scale(action, self.param.a_max)
+				action = self.bf.numpy_scale(action, self.param.a_max)
 
-			elif self.param.safety is "fdbk":
-				P,H = self.numpy_get_relative_positions_and_safety_functions(x)
-				Psi = self.numpy_get_psi(x,P,H)
-				GradPsiInv = self.numpy_get_grad_psi_inv(x,P,H)
-				barrier_action = -1*self.param.b_gamma*Psi*GradPsiInv
+			elif self.param.safety == "fdbk_si":
+
+				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.numpy_fdbk_si(x,P,H)
+
 				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
-				empty_action = self.numpy_scale(empty_action, self.param.pi_max)
-				alpha_fdbk = self.numpy_get_alpha_fdbk()
-				action = alpha_fdbk*empty_action + barrier_action 
-				action = self.numpy_scale(action, self.param.a_max)
+				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
 
+				adaptive_scaling = self.bf.numpy_get_adaptive_scaling_si(x,empty_action,barrier_action,P,H)
+				action = adaptive_scaling*empty_action+barrier_action 
+				action = self.bf.numpy_scale(action, self.param.a_max)				
+
+			elif self.param.safety == "fdbk_di":
+
+				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.numpy_fdbk_di(x,P,H)
+
+				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
+				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
+
+				adaptive_scaling = self.bf.numpy_get_adaptive_scaling_di(x,empty_action,barrier_action,P,H)
+				action = adaptive_scaling*empty_action + barrier_action 
+				action = self.bf.numpy_scale(action, self.param.a_max)
+
+			elif self.param.safety == "cf_si":
+
+				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.numpy_fdbk_si(x,P,H)
+
+				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
+				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
+
+				cf_alpha = self.bf.numpy_get_cf_si(x,P,H,empty_action,barrier_action)
+				action = cf_alpha*empty_action + (1-cf_alpha)*barrier_action 
+				action = self.bf.numpy_scale(action, self.param.a_max)
+
+			elif self.param.safety == "cf_si_2":
+
+				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.numpy_fdbk_si(x,P,H)
+
+				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
+				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
+
+				cf_alpha = self.bf.numpy_get_cf_si_2(x,P,H,empty_action,barrier_action)
+				action = cf_alpha*empty_action + (1-cf_alpha)*barrier_action 
+				action = self.bf.numpy_scale(action, self.param.a_max)				
+
+			elif self.param.safety == "cf_di":
+
+				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.numpy_fdbk_di(x,P,H)
+
+				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
+				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
+
+				cf_alpha = self.bf.numpy_get_cf_di(x,P,H,empty_action,barrier_action)
+				action = cf_alpha*empty_action + (1-cf_alpha)*barrier_action 
+				action = self.bf.numpy_scale(action, self.param.a_max)
+
+			elif self.param.safety == "cf_di_2":
+
+				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
+				barrier_action = self.bf.numpy_fdbk_di(x,P,H)
+
+				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
+				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
+
+				cf_alpha = self.bf.numpy_get_cf_di_2(x,P,H,empty_action,barrier_action)
+				action = cf_alpha*empty_action + (1-cf_alpha)*barrier_action 
+				action = self.bf.numpy_scale(action, self.param.a_max)				
+
+			else:
+				exit('self.param.safety: {} not recognized'.format(self.param.safety))
 
 		else:
 			exit('type(x) not recognized: ', type(x))
 
-		return action
+		return action 
 
 	def policy(self,x):
 
-		A = np.empty((len(x),self.dim_action))
-		for i,x_i in enumerate(x):
-			a_i = self(x_i)
-			A[i,:] = a_i 
-		return A
+		if self.param.rollout_batch_on:
+			grouping = dict()
+			for i,x_i in enumerate(x):
+				key = (int(x_i[0][0]), x_i.shape[1])
+				if key in grouping:
+					grouping[key].append(i)
+				else:
+					grouping[key] = [i]
 
-	def numpy_get_psi(self,x,P,H):
-		psi = np.zeros(1,dtype=float)
-		for j in range(self.get_num_neighbors(x) + self.get_num_obstacles(x)):
-			psi += -np.log(H[:,j])
-		return psi 
+			if len(grouping) < len(x):
+				A = np.empty((len(x),self.dim_action))
+				for key, idxs in grouping.items():
+					batch = torch.Tensor([x[idx][0] for idx in idxs])
+					a = self(batch)
+					a = a.detach().numpy()
+					for i, idx in enumerate(idxs):
+						A[idx,:] = a[i]
 
-	def numpy_get_grad_psi_inv(self,x,P,H):
-		barrier = self.numpy_get_barrier_action(x,P,H)
-		barrier += self.param.eps_h*np.random.random(barrier.shape)
-		grad_psi_inv = np.ones(barrier.shape)
-		grad_psi_inv[:,0] = (1-barrier[:,1])/barrier[:,0]
-		return grad_psi_inv
-
-	def numpy_get_alpha_fdbk(self):
-		phi_max = -self.param.n_agents**2.0*np.log(self.param.Delta_R/(self.param.r_obs_sense-self.param.r_agent))
-		alpha = phi_max*self.param.b_gamma 
-		return alpha 
-
-	def numpy_get_relative_positions_and_safety_functions(self,x):
-		
-		nd = x.shape[0] # number of data points in batch 
-		nn = self.get_num_neighbors(x)
-		no = self.get_num_obstacles(x) 
-
-		P = np.zeros((nd,nn+no,2)) # pj - pi 
-		H = np.zeros((nd,nn+no)) 
-		curr_idx = 0
-
-		for j in range(nn):
-			idx = self.get_agent_idx_j(x,j)
-			P[:,curr_idx,:] = x[:,idx]
-			H[:,curr_idx] = np.max((
-				(np.linalg.norm(x[:,idx]) - 2*self.param.r_agent)/(self.param.r_comm - self.param.r_agent),
-				self.param.eps_h*np.ones(1)))
-			curr_idx += 1 
-
-		for j in range(no):
-			idx = self.get_obstacle_idx_j(x,j)
-			P[:,curr_idx,:] = x[:,idx]
-			closest_point = min_point_circle_rectangle(
-				np.zeros(2), 
-				self.param.r_agent,
-				-x[:,idx] - np.array([0.5,0.5]), 
-				-x[:,idx] + np.array([0.5,0.5]))
-			H[:,curr_idx] = np.max((
-				(np.linalg.norm(closest_point) - self.param.r_agent)/(self.param.r_obs_sense-self.param.r_agent), 
-				self.param.eps_h*np.ones(1)))
-			curr_idx += 1
-		return P,H 
-
-	def numpy_get_barrier_action(self,x,P,H):
-
-		barrier = np.zeros((len(x),self.dim_action))
-		for j in range(self.get_num_neighbors(x) + self.get_num_obstacles(x)):
-			barrier += self.numpy_get_barrier(P[:,j,:],H[:,j])
-		return barrier
-
-	def numpy_get_barrier(self,P,H):
-		normp = np.linalg.norm(P)
-		barrier = -1*self.param.b_gamma/(H*normp)*P
-		return barrier
-
-	def numpy_get_adaptive_scaling(self,x,empty_action,barrier_action,P,H):
-		adaptive_scaling = 1.0 
-		if not H.size == 0 and np.min(H < self.param.Delta_R):
-			normb = np.linalg.norm(barrier_action)
-			normpi = np.linalg.norm(empty_action)
-			adaptive_scaling = np.min((normb/normpi,1))
-		return adaptive_scaling
-
-	def numpy_scale(self,action,max_action):
-		alpha = max_action/np.linalg.norm(action)
-		alpha = np.min((alpha,1))
-		action = action*alpha
-		return action
-
-	def get_num_neighbors(self,x):
-		return int(x[0,0])
-
-	def get_num_obstacles(self,x):
-		nn = self.get_num_neighbors(x)
-		return int((x.shape[1] - 1 - self.dim_state - nn*self.dim_neighbor) / 2)  # number of obstacles 
-
-	def get_agent_idx_j(self,x,j):
-		idx = 1+self.dim_state + self.dim_neighbor*j+np.arange(0,2,dtype=int)
-		return idx
-
-	def get_obstacle_idx_j(self,x,j):
-		nn = self.get_num_neighbors(x)
-		idx = 1 + self.dim_state + self.dim_neighbor*nn+j*2+np.arange(0,2,dtype=int)
-		return idx
-
-	def get_agent_idx_all(self,x):
-		nn = self.get_num_neighbors(x)
-		idx = np.arange(1+self.dim_state,1+self.dim_state+self.dim_neighbor*nn,dtype=int)
-		return idx
-
-	def get_obstacle_idx_all(self,x):
-		nn = self.get_num_neighbors(x)
-		idx = np.arange((1+self.dim_state)+self.dim_neighbor*nn, x.size()[1],dtype=int)
-		return idx
-
-	def get_goal_idx(self,x):
-		idx = np.arange(1,1+self.dim_state,dtype=int)
-		return idx 
-
-
-
-
-
-
-
-
+				return A
+			else:
+				A = np.empty((len(x),self.dim_action))
+				for i,x_i in enumerate(x):
+					a_i = self(x_i)
+					A[i,:] = a_i 
+				return A
+		else:
+			A = np.empty((len(x),self.dim_action))
+			for i,x_i in enumerate(x):
+				a_i = self(x_i)
+				A[i,:] = a_i 
+			return A
 
 # other
 # consensus policies 
@@ -205,10 +271,18 @@ class GoToGoalPolicy:
 		A = torch.empty((len(o),self.env.action_dim_per_agent))
 		for i, observation_i in enumerate(o):
 			relative_goal = np.array(observation_i[1:3])
+			relative_vel = np.array(observation_i[3:5])
+			
 			a_nom = self.param.cbf_kp*relative_goal
-			scale = self.param.a_max/np.max(np.abs(a_nom))
-			if scale < 1:
-				a_nom = scale*a_nom
+			if hasattr(self.env.param,'env_name') and self.env.param.env_name == "DoubleIntegrator":
+				# print('adding damping')
+				a_nom += self.param.cbf_kd*relative_vel
+
+			# # a_nom = relative_goal
+			# scale = np.linalg.norm(a_nom)/self.param.pi_max
+			# if scale > 1:
+			# 	a_nom = a_nom/scale 
+
 			A[i,:] = torch.tensor(a_nom)
 
 		return A

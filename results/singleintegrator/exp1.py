@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 # execute from results folder!
 
@@ -41,7 +40,8 @@ if __name__ == "__main__":
   else:
     device = torch.device('cpu')
 
-  agents_lst = [2,4,8,16,32]
+  # agents_lst = [2,4,8,16,32]
+  agents_lst = [4,8]
   obst_lst = [6,12]
 
   if args.plot:
@@ -49,9 +49,9 @@ if __name__ == "__main__":
     plt.rcParams['lines.linewidth'] = 4
 
     solvers = {
-      'orcaR3': 'ORCA',
+      # 'orcaR3': 'ORCA',
       'exp1Empty': 'NN+BF',
-      'central': 'Central',
+      # 'central': 'Central',
       'exp1Barrier': 'NNwBF'
     }
 
@@ -163,15 +163,14 @@ if __name__ == "__main__":
       datadir.extend(glob.glob("singleintegrator/instances/*obst{}_agents{}_*".format(obst,agents)))
   instances = sorted(datadir)
 
-  first_training = False
-
+  first_training = True
 
   for i in range(1):
       # train policy
       param = run_singleintegrator.SingleIntegratorParam()
       env = SingleIntegrator(param)
       if args.train:
-        for cc in ['Empty']:#, 'Barrier']:
+        for cc in ['Empty', 'Barrier']:
           param = run_singleintegrator.SingleIntegratorParam()
           param.il_controller_class = cc
           param.il_train_model_fn = 'singleintegrator/exp1{}_{}/il_current.pt'.format(cc,i)
@@ -191,13 +190,12 @@ if __name__ == "__main__":
           'exp1Barrier_{}'.format(i) : torch.load('singleintegrator/exp1Barrier_{}/il_current.pt'.format(i))
         }
 
-        # for instance in instances:
-          # run_singleintegrator.run_batch(instance, controllers)
+        serial_on = True 
+        if serial_on: 
+          for instance in instances:
+            run_singleintegrator.run_batch(param, env, instance, controllers)
 
-        with Pool(32) as p:
-          p.starmap(run_singleintegrator.run_batch, zip(repeat(param), repeat(env), instances, repeat(controllers)))
-
-        # with concurrent.futures.ProcessPoolExecutor(max_workers=12) as executor:
-        #   for _ in executor.map(run_singleintegrator.run_batch, instances, repeat(controllers)):
-        #     pass
+        else: 
+          with Pool(32) as p:
+            p.starmap(run_singleintegrator.run_batch, zip(repeat(param), repeat(env), instances, repeat(controllers)))
 

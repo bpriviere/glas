@@ -8,8 +8,7 @@ from param import Param
 from run import run, parse_args
 from sim import run_sim
 from systems.singleintegrator import SingleIntegrator
-from other_policy import APF, Empty_Net_wAPF, ZeroPolicy, GoToGoalPolicy
-import plotter 
+from other_policy import APF, Empty_Net_wAPF 
 
 # standard
 from torch import nn, tanh, relu
@@ -23,6 +22,9 @@ class SingleIntegratorParam(Param):
 		super().__init__()
 		self.env_name = 'SingleIntegrator'
 		self.env_case = None
+
+		# 
+		self.preprocessed_data_dir = 'data/preprocessed_data/'
 
 		# flags
 		self.pomdp_on = True
@@ -40,8 +42,8 @@ class SingleIntegratorParam(Param):
 
 		# sim 
 		self.sim_t0 = 0
-		self.sim_tf = 10
-		self.sim_dt = 0.25
+		self.sim_tf = 5
+		self.sim_dt = 0.5
 		self.sim_times = np.arange(self.sim_t0,self.sim_tf,self.sim_dt)
 		self.sim_nt = len(self.sim_times)
 		self.plots_fn = 'plots.pdf'
@@ -53,8 +55,6 @@ class SingleIntegratorParam(Param):
 
 		self.max_neighbors = 6
 		self.max_obstacles = 6
-
-		self.epsilon = 0.001
 
 		# Barrier function stuff
 		if self.safety == "cf_si":
@@ -80,6 +80,8 @@ class SingleIntegratorParam(Param):
 			self.pi_max = 0.8	# 0.5
 			self.kp = 1.5		# 1.0
 			self.cbf_kp = 0.5
+
+			self.epsilon = 0.01
 
 			pi_max_thresh = self.kp / (0.2 - self.r_agent) * 0.01 # 0.01 = epsilon
 			print('pi_max_thresh = ',pi_max_thresh)
@@ -112,36 +114,20 @@ class SingleIntegratorParam(Param):
 		self.il_load_dataset_on = True
 		self.il_test_train_ratio = 0.85
 		self.il_batch_size = 4096*8
-		self.il_n_epoch = 20
+		self.il_n_epoch = 5
 		self.il_lr = 1e-3
 		self.il_wd = 0 #0.0001
 		self.il_n_data = None # 100000 # 100000000
 		self.il_log_interval = 1
 		self.il_load_dataset = ['orca','centralplanner'] # 'random','ring','centralplanner'
-		self.il_controller_class = 'Barrier' # 'Empty','Barrier',
+		self.il_controller_class = 'Empty' # 'Empty','Barrier',
 		self.il_pretrain_weights_fn = None # None or path to *.tar file
 		
 		self.datadict = dict()
-		# self.datadict["4"] = 10000 #self.il_n_data
-		self.datadict["obst"] = 40000000 # 100000000000 #10000000 #750000 #self.il_n_data
-		# self.datadict["10"] = 10000000 #250000 #self.il_n_data
-		# self.datadict["15"] = 10000000 #250000 #self.il_n_data
-		# self.datadict["012"] = 1000000 #250000 #self.il_n_data
-		# self.datadict["032"] = 1000000 #250000 #self.il_n_data
+		self.datadict["8"] = 40000000 # 100000000000 #10000000 #750000 #self.il_n_data
 
-		self.il_obst_case = 12
+		self.il_obst_case = 6
 		self.controller_learning_module = 'DeepSet' #
-
-		# adaptive dataset parameters
-		self.adaptive_dataset_on = False
-		self.ad_n = 100 # n number of rollouts
-		self.ad_n_data_per_rollout = 100000 # repeat rollout until at least this amount of data was added
-		self.ad_l = 2 # l prev observations 
-		self.ad_k = 20 # k closest 
-		self.ad_n_epoch = 10
-		self.ad_n_data = 2000000
-		self.ad_dl = 10 # every . timesteps  
-		self.ad_train_model_fn = '../models/singleintegrator/ad_current.pt'
 
 		# Sim
 		self.sim_il_model_fn = '../models/singleintegrator/il_current.pt'

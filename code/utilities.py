@@ -73,7 +73,7 @@ def not_batch_is_collision_circle_rectangle(circle_pos, circle_r, rect_tl, rect_
 	# Calculate the distance between the circle's center and this closest point
 	dist = np.linalg.norm(circle_pos - closest)
 	# If the distance is less than the circle's radius, an intersection occurs
-	return dist + 1e-4 < circle_r, dist
+	return dist - 1e-9 < circle_r, dist
 
 def min_point_circle_rectangle(circle_pos, circle_r, rect_tl, rect_br):
 	# Find the closest point to the circle within the rectangle

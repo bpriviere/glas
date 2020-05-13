@@ -11,9 +11,8 @@ import os
 import yaml
 
 # my package
-import plotter 
 import utilities
-from utilities import rot_mat_2d
+from utilities import rot_mat_2d, not_batch_is_collision_circle_rectangle
 from scipy.linalg import block_diag
 
 class Agent:
@@ -130,7 +129,7 @@ class DoubleIntegrator(Env):
 					break
 
 			# query visible obstacles
-			if self.param.max_obstacles > 0:
+			if self.param.max_obstacles > 0 and self.kd_tree_obstacles is not None:
 				_, obst_idx = self.kd_tree_obstacles.query(p_i,
 					k=self.param.max_obstacles,
 					distance_upper_bound=self.param.r_obs_sense)
@@ -179,13 +178,28 @@ class DoubleIntegrator(Env):
 		# check with respect to other agents
 		results = self.kd_tree_neighbors.query_pairs(2*self.r_agent)
 		if len(results) > 0:
+			for result in results:
+				p_i = self.agents[result[0]].p
+				p_j = self.agents[result[1]].p
+				dist = np.linalg.norm(p_i-p_j)
+				print('   a2a dist {} at time {} a {} and a {}'.format(dist,self.times[self.time_step], self.agents[result[0]].i, self.agents[result[1]].i))
+				# exit()
 			return -1
 
 		# check with respect to obstacles
-		results = self.kd_tree_obstacles.query_ball_point(self.positions, self.r_agent + self.r_obstacle)
-		for r in results:
-			if len(r) > 0:
-				return -1
+		# results = self.kd_tree_obstacles.query_ball_point(self.positions, self.r_agent + self.r_obstacle)
+		# for r in results:
+		# 	if len(r) > 0:
+		# 		return -1
+
+		for agent in self.agents:
+			for o in self.obstacles:
+				coll, dist = not_batch_is_collision_circle_rectangle(np.array(agent.p), self.param.r_agent, np.array(o), np.array(o) + np.array([1.0,1.0]))
+				inc = np.count_nonzero(coll)
+				if inc > 0:
+					print('   a2o dist {} at time {} a {}'.format(dist,self.times[self.time_step], agent.i))
+					# exit()
+					return -inc 
 
 		return 0
 
@@ -226,7 +240,10 @@ class DoubleIntegrator(Env):
 				
 
 		self.obstacles_np = np.array([np.array(o) + np.array([0.5,0.5]) for o in self.obstacles])
-		self.kd_tree_obstacles = spatial.KDTree(self.obstacles_np)
+		if len(self.obstacles) > 0:
+			self.kd_tree_obstacles = spatial.KDTree(self.obstacles_np)
+		else:
+			self.kd_tree_obstacles = None
 
 		self.update_agents(self.s)
 		return np.copy(self.s)
@@ -268,7 +285,11 @@ class DoubleIntegrator(Env):
 			p_idx = np.arange(idx,idx+2)
 			v_idx = np.arange(idx+2,idx+4)
 			sp1[p_idx] = self.s[p_idx] + self.s[v_idx]*dt
-			sp1[v_idx] = np.clip(self.s[v_idx] + a[agent_i.i,:]*dt, self.v_min, self.v_max)
+			sp1[v_idx] = self.s[v_idx] + a[agent_i.i,:]*dt
+			# scale velocity if needed
+			vel = np.linalg.norm(sp1[v_idx])
+			if vel > self.v_max:
+				sp1[v_idx] = sp1[v_idx] / vel * self.v_max
 
 			# scale velocity 
 
@@ -313,7 +334,9 @@ class DoubleIntegrator(Env):
 		# load map
 		instance = os.path.splitext(os.path.basename(filename))[0]
 
-		filename_map = "{}/../../singleintegrator/instances3/{}.yaml".format(os.path.dirname(filename), instance)
+		# filename_map = "{}/../../singleintegrator/instances3/{}.yaml".format(os.path.dirname(filename), instance)
+		filename_map = "{}/../instances/{}.yaml".format(os.path.dirname(filename), instance)
+		
 		with open(filename_map) as map_file:
 			map_data = yaml.load(map_file, Loader=yaml.SafeLoader)
 		obstacles = []
@@ -335,7 +358,7 @@ class DoubleIntegrator(Env):
 		for i, agent in enumerate(map_data["agents"]):
 			goal = np.array([0.5,0.5,0,0]) + np.array(agent["goal"] + [0,0])
 			distances = np.linalg.norm(data[:,(i*4+1):(i*4+5)] - goal, axis=1)
-			goalIdx = np.argwhere(distances > 0.1)
+			goalIdx = np.argwhere(distances > 0.01)
 			if len(goalIdx) == 0:
 				goalIdx = np.array([0])
 			lastIdx = np.max(goalIdx)
@@ -350,7 +373,7 @@ class DoubleIntegrator(Env):
 		dataset = []
 		# Observation_Action_Pair = namedtuple('Observation_Action_Pair', ['observation', 'action']) 
 		# Observation = namedtuple('Observation',['relative_goal','time_to_goal','relative_neighbors','relative_obstacles']) 
-		for t in range(50,data.shape[0]-1):
+		for t in range(0,data.shape[0]-1):
 			if t%self.param.training_time_downsample != 0:
 				continue
 
@@ -371,12 +394,18 @@ class DoubleIntegrator(Env):
 				time_to_goal = data[-1,0] - data[t,0]
 
 				# query visible neighbors
-				_, neighbor_idx = kd_tree_neighbors.query(
+				neighbor_dist, neighbor_idx = kd_tree_neighbors.query(
 					s_i[0:2].numpy(),
 					k=self.param.max_neighbors+1,
 					distance_upper_bound=self.param.r_comm)
+
 				if type(neighbor_idx) is not np.ndarray:
 					neighbor_idx = [neighbor_idx]
+					neighbor_dist = [neighbor_dist]
+
+				if neighbor_idx[1] < positions.shape[0] and neighbor_dist[1] < 2*self.param.r_agent:
+					exit('agent collision in filename {}'.format(filename))
+
 				relative_neighbors = []
 				for k in neighbor_idx[1:]: # skip first entry (self)
 					if k < positions.shape[0]:
@@ -386,12 +415,19 @@ class DoubleIntegrator(Env):
 
 				# query visible obstacles
 				if self.param.max_obstacles > 0:
-					_, obst_idx = kd_tree_obstacles.query(
+					obst_dist, obst_idx = kd_tree_obstacles.query(
 						s_i[0:2].numpy(),
 						k=self.param.max_obstacles,
 						distance_upper_bound=self.param.r_obs_sense)
 					if type(obst_idx) is not np.ndarray:
 						obst_idx = [obst_idx]
+						obst_dist = [obst_dist]
+
+					if obst_idx[0] < obstacles.shape[0]:
+						coll, dist = not_batch_is_collision_circle_rectangle(s_i[0:2].numpy(), self.param.r_agent, obstacles[obst_idx[0],:]-0.5, obstacles[obst_idx[0],:]+0.5)
+						if coll:
+							exit('obst collision in filename {}'.format(filename))
+
 				else:
 					obst_idx = []
 				relative_obstacles = []
@@ -507,13 +543,13 @@ class DoubleIntegrator(Env):
 
 			idx_goal = np.arange(1,5,dtype=int)
 
-			transformed_dataset = np.empty(dataset.shape)
-			transformed_classification = np.empty(classification.shape)
-			transformations = np.empty((dataset.shape[0],2,2))
+			transformed_dataset = np.empty(dataset.shape,dtype=np.float32)
+			transformed_classification = np.empty(classification.shape,dtype=np.float32)
+			transformations = np.empty((dataset.shape[0],2,2),dtype=np.float32)
 
 			for k,row in enumerate(dataset):
 
-				transformed_row = np.empty(row.shape)
+				transformed_row = np.empty(row.shape,dtype=np.float32)
 				transformed_row[0] = row[0]
 
 				# get goal 
@@ -627,7 +663,7 @@ class DoubleIntegrator(Env):
 
 			if num_obstacles > 0:
 				closest_obstacle = obs[0,5+4*num_neighbors:5+4*num_neighbors+2]
-				if self.is_collision_circle_rectangle(
+				if self.not_batch_is_collision_circle_rectangle(
 					np.zeros(2),
 					self.r_agent,
 					closest_obstacle - np.array([0.5,0.5]),
@@ -649,14 +685,4 @@ class DoubleIntegrator(Env):
 					bad_agents.add(agent)
 
 		return list(bad_agents)
-
-
-	# from https://stackoverflow.com/questions/401847/circle-rectangle-collision-detection-intersection
-	def is_collision_circle_rectangle(self,circle_pos, circle_r, rect_tl, rect_br):
-		# Find the closest point to the circle within the rectangle
-		closest = np.clip(circle_pos, rect_tl, rect_br)
-		# Calculate the distance between the circle's center and this closest point
-		dist = np.linalg.norm(circle_pos - closest)
-		# If the distance is less than the circle's radius, an intersection occurs
-		return dist + 1e-4 < circle_r
 

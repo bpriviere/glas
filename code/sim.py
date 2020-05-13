@@ -8,12 +8,10 @@ import glob
 from collections import namedtuple
 
 # my package
-import plotter
 from matplotlib.patches import Rectangle, Circle
 import utilities as util
-from other_policy import ZeroPolicy, LCP_Policy
 
-def run_sim(param, env, controller, initial_state):
+def run_sim(param, env, controller, initial_state, name=None):
 	states = np.empty((len(param.sim_times), env.n))
 	actions = np.empty((len(param.sim_times)-1,env.m))
 	observations = [] 
@@ -22,23 +20,25 @@ def run_sim(param, env, controller, initial_state):
 	env.reset(initial_state)
 	states[0] = np.copy(env.s)
 	for step, time in enumerate(param.sim_times[:-1]):
-		print('t: {}/{}'.format(time,param.sim_times[-1]))
+		# print('t: {}/{}'.format(time,param.sim_times[-1]))
 
 		state = states[step]
 		observation = env.observe()
 
 		action = controller.policy(observation)
-		next_state, r, done, _ = env.step(action, compute_reward = True)
+		next_state, r, done, _ = env.step(action, compute_reward = False)
 		reward += r
 		
 		states[step + 1] = next_state
 		actions[step] = action.flatten()
 		observations.append(observation)
 
+		# if done or r < 0:
+		# 	break
 		if done:
 			break
 
-	print('reward: ',reward)
+	print('reward: ',reward, name)
 	env.close()
 	return states, observations, actions, step
 
@@ -112,7 +112,7 @@ def sim(param, env, controllers, initial_state, visualize):
 				plotter.plot_square(agent.s_g[0],agent.s_g[1],param.r_agent,angle=45,fig=fig,ax=ax,color=color)
 
 			# draw state for each time step
-			robot = 1
+			robot = 0
 			if param.env_name in ['SingleIntegrator','SingleIntegratorVelSensing']:
 				for step in np.arange(0, result.steps, 1000):
 					fig,ax = plotter.make_fig()
@@ -198,7 +198,7 @@ def sim(param, env, controllers, initial_state, visualize):
 						U.append(observation[idx+2])
 						V.append(observation[idx+3])
 						# print(np.linalg.norm(observation[idx+2:idx+4]))
-						ax.add_patch(Circle(pos, 0.25, facecolor='gray', edgecolor='red', alpha=0.5))
+						ax.add_patch(Circle(pos, param.r_agent, facecolor='gray', edgecolor='red', alpha=0.5))
 						idx += 4
 
 					for i in range(num_obstacles):
@@ -294,6 +294,10 @@ def sim(param, env, controllers, initial_state, visualize):
 							times[1:result.steps],
 							result.actions[1:result.steps,agent.i*env.action_dim_per_agent+i_config],
 							label=result.name)
+
+						# 
+						if i_config == 5:
+							ax.set_yscale('log')
 				
 		# extract gains
 		if name in ['PID_wRef','PID']:

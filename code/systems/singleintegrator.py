@@ -11,7 +11,6 @@ import os
 import yaml
 
 # my package
-import plotter 
 import utilities
 from utilities import rot_mat_2d, not_batch_is_collision_circle_rectangle
 from scipy.linalg import block_diag
@@ -150,7 +149,7 @@ class SingleIntegrator(Env):
 			# convert to numpy array format
 			num_neighbors = len(relative_neighbors)
 			num_obstacles = len(relative_obstacles)
-			obs_array = np.zeros(3+2*num_neighbors+2*num_obstacles)
+			obs_array = np.zeros(3+2*num_neighbors+2*num_obstacles, dtype=np.float32)
 			obs_array[0] = num_neighbors
 			idx = 1
 			obs_array[idx:idx+2] = relative_goal
@@ -175,6 +174,12 @@ class SingleIntegrator(Env):
 		# check with respect to other agents
 		results = self.kd_tree_neighbors.query_pairs(2*self.r_agent)
 		if len(results) > 0:
+			for result in results:
+				p_i = self.agents[result[0]].p
+				p_j = self.agents[result[1]].p
+				dist = np.linalg.norm(p_i-p_j)
+				print('   a2a dist {} at time {} a {} and a {}'.format(dist,self.times[self.time_step], self.agents[result[0]].i, self.agents[result[1]].i))
+				# exit()
 			return -1
 
 		# check with respect to obstacles
@@ -187,7 +192,9 @@ class SingleIntegrator(Env):
 			for o in self.obstacles:
 				coll, dist = not_batch_is_collision_circle_rectangle(np.array(agent.p), self.param.r_agent, np.array(o), np.array(o) + np.array([1.0,1.0]))
 				inc = np.count_nonzero(coll)
-				return -inc 
+				if inc > 0:
+					print('   a2o dist {} at time {} a {}'.format(dist,self.times[self.time_step], agent.i))
+					return -inc 
 
 		return 0
 
@@ -348,7 +355,7 @@ class SingleIntegrator(Env):
 		dataset = []
 		# Observation_Action_Pair = namedtuple('Observation_Action_Pair', ['observation', 'action']) 
 		# Observation = namedtuple('Observation',['relative_goal','time_to_goal','relative_neighbors','relative_obstacles']) 
-		for t in range(50,data.shape[0]-1):
+		for t in range(0,data.shape[0]-1):
 			if t%self.param.training_time_downsample != 0:
 				continue
 
@@ -514,13 +521,13 @@ class SingleIntegrator(Env):
 
 			idx_goal = np.arange(1,3,dtype=int)
 
-			transformed_dataset = np.empty(dataset.shape)
-			transformed_classification = np.empty(classification.shape)
-			transformations = np.empty((dataset.shape[0],2,2))
+			transformed_dataset = np.empty(dataset.shape,dtype=np.float32)
+			transformed_classification = np.empty(classification.shape,dtype=np.float32)
+			transformations = np.empty((dataset.shape[0],2,2),dtype=np.float32)
 
 			for k,row in enumerate(dataset):
 
-				transformed_row = np.empty(row.shape)
+				transformed_row = np.empty(row.shape,dtype=np.float32)
 				transformed_row[0] = row[0]
 
 				# get goal 

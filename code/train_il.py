@@ -11,6 +11,7 @@ import yaml
 import utilities
 import concurrent.futures
 from itertools import repeat
+from multiprocessing import cpu_count
 import time
 
 from numpy import array, zeros, Inf
@@ -96,6 +97,7 @@ def get_dynamic_dataset(model, env, param,index):
 
 def make_loader(
 	env,
+	param,
 	dataset=None,
 	n_data=None,
 	shuffle=False,
@@ -137,7 +139,7 @@ def make_loader(
 
 			print(name, " neighbors ", num_neighbors, " obstacles ", num_obstacles, " ex. ", batch_x.shape[0])
 
-			with open("../preprocessed_data/batch_{}_nn{}_no{}.npy".format(name,num_neighbors, num_obstacles), "wb") as f:
+			with open("../{}/batch_{}_nn{}_no{}.npy".format(param.preprocessed_data_dir,name,num_neighbors,num_obstacles), "wb") as f:
 				np.save(f, batch_xy, allow_pickle=False)
 
 			# convert to torch
@@ -167,10 +169,10 @@ def make_loader(
 
 	return loader
 
-def load_loader(name,batch_size,device):
+def load_loader(name,batch_size,device,param):
 
 	loader = []
-	datadir = glob.glob("../preprocessed_data/batch_{}*.npy".format(name))
+	datadir = glob.glob("../{}/batch_{}*.npy".format(param.preprocessed_data_dir,name))
 	for file in datadir: 
 		
 		batch_xy = np.load(file)
@@ -234,19 +236,30 @@ def train_il(param, env, device):
 	
 		if not param.il_load_loader_on:
 
-			shutil.rmtree('../preprocessed_data')
-			os.mkdir('../preprocessed_data')
+			shutil.rmtree('../{}'.format(param.preprocessed_data_dir))
+			os.mkdir('../{}'.format(param.preprocessed_data_dir))
 
 			for datapattern,num_data in param.datadict.items():
-				print(os.getcwd())
 				if param.env_name in ['SingleIntegrator']:
-					datadir = glob.glob("../data/training/singleintegrator/central/*{}_ex*.npy".format(datapattern))
+					datadir = glob.glob("../data/training/singleintegrator/central/*{}*.npy".format(datapattern))
 				elif param.env_name in ['DoubleIntegrator']:
-					datadir = glob.glob("../data/training/doubleintegrator/central/*{}_ex*.npy".format(datapattern))
+					datadir = glob.glob("../data/training/doubleintegrator/central/*{}*.npy".format(datapattern))
+				random.shuffle(datadir)
+
+				# # Filter by modification time
+				# datadir_filtered = []
+				# for file in datadir:
+				# 	file_time = time.localtime(os.path.getmtime(file))
+				# 	if file_time.tm_mon < 2:
+				# 		datadir_filtered.append(file)
+
+				# datadir = datadir_filtered
 
 				len_case = 0
-				with concurrent.futures.ProcessPoolExecutor() as executor:
+				with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count()) as executor:
 					for dataset in executor.map(env.load_dataset_action_loss, datadir):
+				# for file in datadir:
+					# dataset = env.load_dataset_action_loss(file)
 						if np.random.uniform(0, 1) <= param.il_test_train_ratio:
 							train_dataset.extend(dataset)
 						else:
@@ -263,6 +276,7 @@ def train_il(param, env, device):
 
 			loader_train = make_loader(
 				env,
+				param,
 				dataset=train_dataset,
 				shuffle=True,
 				batch_size=param.il_batch_size,
@@ -272,6 +286,7 @@ def train_il(param, env, device):
 
 			loader_test = make_loader(
 				env,
+				param,
 				dataset=test_dataset,
 				shuffle=True,
 				batch_size=param.il_batch_size,
@@ -280,9 +295,9 @@ def train_il(param, env, device):
 				device=device)
 
 		else:
-			loader_train = load_loader("train",param.il_batch_size,device=device)
+			loader_train = load_loader("train",param.il_batch_size,device,param)
 			# loader_train = load_loader("adaptive",param.il_batch_size)
-			loader_test  = load_loader("test",param.il_batch_size,device=device)
+			loader_test  = load_loader("test",param.il_batch_size,device,param)
 
 	# init model
 	if param.il_controller_class is 'Barrier':
@@ -293,16 +308,20 @@ def train_il(param, env, device):
 		print('Error in Train Gains, programmatic controller not recognized')
 		exit()
 
-	optimizer = torch.optim.Adam(model.parameters(), lr=param.il_lr, weight_decay = param.il_wd)
-	adaptive_dataset_len_lst = []
-	num_unique_points_lst = []
-	if param.adaptive_dataset_on:
+	if param.il_pretrain_weights_fn is not None:
+		model.load_weights(param.il_pretrain_weights_fn)
 
-		# first, train on the whole dataset
+	optimizer = torch.optim.Adam(model.parameters(), lr=param.il_lr, weight_decay = param.il_wd)
+	# optimizer = torch.optim.AdamW(model.parameters(), lr=param.il_lr, weight_decay = param.il_wd)
+	# optimizer = torch.optim.SGD(model.parameters(), lr=param.il_lr, momentum=0.9,weight_decay = param.il_wd)
+
+	with open(param.il_train_model_fn + ".csv", 'w') as log_file:
+		log_file.write("time,epoch,train_loss,test_loss\n")
+		start_time = time.time()
 		best_test_loss = Inf
 		scheduler = ReduceLROnPlateau(optimizer, 'min')
 		for epoch in range(1,param.il_n_epoch+1):
-						
+
 			train_epoch_loss = train(param,env,model,optimizer,loader_train)
 			test_epoch_loss = test(param,env,model,loader_test)
 			scheduler.step(test_epoch_loss)
@@ -315,102 +334,6 @@ def train_il(param, env, device):
 					best_test_loss = test_epoch_loss
 					print('      saving @ best test loss:', best_test_loss)
 					torch.save(model.to('cpu'), param.il_train_model_fn)
+					model.save_weights(param.il_train_model_fn + ".tar")
 					model.to(device)
-
-		index = Index()
-		adaptive_dataset = list(train_dataset)
-		# best_train_loss = Inf
-		scheduler = ReduceLROnPlateau(optimizer, 'min')
-		while len(adaptive_dataset)<param.ad_n_data:
-
-			data = get_dynamic_dataset(model,env,param,index)
-			adaptive_dataset.extend(data)
-			adaptive_dataset_len_lst.append(len(adaptive_dataset)-len(train_dataset))
-			num_unique_points_lst.append(index.get_total_stats())
-
-			print('len(adaptive_dataset): ', len(adaptive_dataset)-len(train_dataset))
-			print('total number of unique points: ', index.get_total_stats())
-			
-			loader_train = make_loader(
-				env,
-				dataset=adaptive_dataset,
-				shuffle=True,
-				batch_size=param.il_batch_size,
-				n_data=param.il_n_data,
-				name = "adaptive")
-
-			# best_test_loss = Inf
-			# scheduler = ReduceLROnPlateau(optimizer, 'min')
-			for epoch in range(1,param.ad_n_epoch+1):
-				
-				train_epoch_loss = train(param,env,model,optimizer,loader_train)
-				test_epoch_loss = test(param,env,model,loader_test)
-				scheduler.step(train_epoch_loss)
-
-				if epoch%param.il_log_interval==0:
-					print('epoch: ', epoch)
-					print('   Train Epoch Loss: ', train_epoch_loss)
-					print('   Test Epoch Loss: ', test_epoch_loss)
-				# 	if train_epoch_loss < best_train_loss:
-						# best_test_loss = test_epoch_loss
-						# print('      saving @ best test loss:', best_test_loss)
-			torch.save(model,param.ad_train_model_fn)
-
-		# index.print_stats()
-		# np.save()
-
-		# best_test_loss = Inf
-		# scheduler = ReduceLROnPlateau(optimizer, 'min')
-		# for epoch in range(1,param.il_n_epoch+1):
-						
-		# 	train_epoch_loss = train(param,env,model,optimizer,loader_train)
-		# 	test_epoch_loss = test(param,env,model,loader_test)
-		# 	scheduler.step(test_epoch_loss)
-
-		# 	if epoch%param.il_log_interval==0:
-		# 		print('epoch: ', epoch)
-		# 		print('   Train Epoch Loss: ', train_epoch_loss)
-		# 		print('   Test Epoch Loss: ', test_epoch_loss)
-		# 		if test_epoch_loss < best_test_loss:
-		# 			best_test_loss = test_epoch_loss
-		# 			print('      saving @ best test loss:', best_test_loss)
-		# 			torch.save(model,param.il_train_model_fn)
-
-	else:
-
-		with open(param.il_train_model_fn + ".csv", 'w') as log_file:
-			log_file.write("time,epoch,train_loss,test_loss\n")
-			start_time = time.time()
-			best_test_loss = Inf
-			scheduler = ReduceLROnPlateau(optimizer, 'min')
-			for epoch in range(1,param.il_n_epoch+1):
-
-				train_epoch_loss = train(param,env,model,optimizer,loader_train)
-				test_epoch_loss = test(param,env,model,loader_test)
-				scheduler.step(test_epoch_loss)
-
-				if epoch%param.il_log_interval==0:
-					print('epoch: ', epoch)
-					print('   Train Epoch Loss: ', train_epoch_loss)
-					print('   Test Epoch Loss: ', test_epoch_loss)
-					if test_epoch_loss < best_test_loss:
-						best_test_loss = test_epoch_loss
-						print('      saving @ best test loss:', best_test_loss)
-						torch.save(model.to('cpu'), param.il_train_model_fn)
-						model.to(device)
-				log_file.write("{},{},{},{}\n".format(time.time() - start_time, epoch, train_epoch_loss, test_epoch_loss))
-
-		# # debug loading memory usage
-		# snapshot = tracemalloc.take_snapshot()
-		# top_stats = snapshot.statistics('lineno')
-
-		# print("[ Top 10 ]")
-		# for stat in top_stats[:10]:
-		# 	print(stat)
-
-	# del model
-	# torch.cuda.empty_cache()
-	# print(torch.cuda.memory_stats())
-
-
-
+			log_file.write("{},{},{},{}\n".format(time.time() - start_time, epoch, train_epoch_loss, test_epoch_loss))
