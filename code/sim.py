@@ -12,7 +12,6 @@ import plotter
 from matplotlib.patches import Rectangle, Circle
 import utilities as util
 from other_policy import ZeroPolicy, LCP_Policy
-from learning.ppo_v2 import PPO
 
 def run_sim(param, env, controller, initial_state):
 	states = np.empty((len(param.sim_times), env.n))

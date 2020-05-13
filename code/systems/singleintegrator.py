@@ -311,7 +311,7 @@ class SingleIntegrator(Env):
 		# load map
 		instance = os.path.splitext(os.path.basename(filename))[0]
 
-		filename_map = "{}/../instances3/{}.yaml".format(os.path.dirname(filename), instance)
+		filename_map = "{}/../instances/{}.yaml".format(os.path.dirname(filename), instance)
 		with open(filename_map) as map_file:
 			map_data = yaml.load(map_file, Loader=yaml.SafeLoader)
 		obstacles = []

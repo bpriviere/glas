@@ -20,13 +20,8 @@ from torch.distributions import Categorical
 from collections import namedtuple
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from learning.pid_net import PID_Net
-from learning.pid_wref_net import PID_wRef_Net
-from learning.ref_net import Ref_Net
 from learning.empty_net import Empty_Net
 from learning.barrier_net import Barrier_Net
-from learning.nl_el_net import NL_EL_Net
-from learning.consensus_net import Consensus_Net
 
 from index import Index 
 
@@ -243,10 +238,11 @@ def train_il(param, env, device):
 			os.mkdir('../preprocessed_data')
 
 			for datapattern,num_data in param.datadict.items():
-				if param.env_name in ['SingleIntegrator','SingleIntegratorVelSensing']:
-					datadir = glob.glob("../data/singleintegrator/central3/*{}_ex*.npy".format(datapattern))
+				print(os.getcwd())
+				if param.env_name in ['SingleIntegrator']:
+					datadir = glob.glob("../data/training/singleintegrator/central/*{}_ex*.npy".format(datapattern))
 				elif param.env_name in ['DoubleIntegrator']:
-					datadir = glob.glob("../data/doubleintegrator/central3/*{}_ex*.npy".format(datapattern))
+					datadir = glob.glob("../data/training/doubleintegrator/central/*{}_ex*.npy".format(datapattern))
 
 				len_case = 0
 				with concurrent.futures.ProcessPoolExecutor() as executor:

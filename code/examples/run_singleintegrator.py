@@ -1,3 +1,8 @@
+# We use process parallelism, so multi-threading tends to hurt our performance
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 from param import Param
 from run import run, parse_args
@@ -30,63 +35,95 @@ class SingleIntegratorParam(Param):
 		self.n_agents = 1
 		self.r_comm = 3 
 		self.r_obs_sense = 3.
-		self.r_agent = 0.15 #5
+		self.r_agent = 0.15
 		self.r_obstacle = 0.5
-		
-		self.a_max = 0.5
-		self.a_min = -1*self.a_max
 
-		self.D_robot = 1.*(self.r_agent+self.r_agent)
-		self.D_obstacle = 1.*(self.r_agent + self.r_obstacle)
-		self.circle_obstacles_on = True # square obstacles batch not implemented
-
-		self.Delta_R = 0.01
-		self.safety = "fdbk" # "potential", "fdbk"
-
-		self.max_neighbors = 5
-		self.max_obstacles = 5
-		# Barrier function stuff
-		self.b_gamma = 0.05 # 0.1
-		self.b_exph = 1.0 # 1.0
-		# cbf 
-		self.cbf_kp = 1.0
-		
-		# 
-		self.eps_h = 1e-9
-		if self.safety is "potential":
-			self.pi_max = 1.1 * (self.a_max + self.b_gamma/(0.2-self.r_agent)) # 1*self.a_max
-			self.pi_min = -self.pi_max # -1*self.a_max
-		elif self.safety is "fdbk":
-			self.pi_max = 1.0
-		
 		# sim 
 		self.sim_t0 = 0
-		self.sim_tf = 25 #25
-		self.sim_dt = 0.05
+		self.sim_tf = 10
+		self.sim_dt = 0.25
 		self.sim_times = np.arange(self.sim_t0,self.sim_tf,self.sim_dt)
 		self.sim_nt = len(self.sim_times)
 		self.plots_fn = 'plots.pdf'
 
+		# safety
+		self.safety = "cf_si_2" # "potential", "fdbk_si", "cf_si"
+		self.default_instance = "map_8by8_obst12_agents8_ex0000.yaml"
+		self.rollout_batch_on = True
+
+		self.max_neighbors = 6
+		self.max_obstacles = 6
+
+		self.epsilon = 0.001
+
+		# Barrier function stuff
+		if self.safety == "cf_si":
+			self.a_max = 0.5
+			self.pi_max = 1.0
+			self.sigmoid_scale = 0.2
+			self.kp = 0.02 # 0.1
+			self.cbf_kp = 0.5 # (pi control is usually saturated)
+
+			# pimax = norm(b) = kp / h  @ |p^ji| = 0.05
+			# pi_max_thresh = self.kp / (0.2 - self.r_agent)
+			# print('pi_max_thresh = ',pi_max_thresh)
+			# print('pi_max = ',self.pi_max)
+
+		elif self.safety == "fdbk_si":
+			self.a_max = 0.5
+			self.pi_max = 0.45
+			self.kp = 0.005 
+			self.cbf_kp = 0.5
+
+		elif self.safety == "cf_si_2":
+			self.a_max = 0.5	# 0.5
+			self.pi_max = 0.8	# 0.5
+			self.kp = 1.5		# 1.0
+			self.cbf_kp = 0.5
+
+			pi_max_thresh = self.kp / (0.2 - self.r_agent) * 0.01 # 0.01 = epsilon
+			print('pi_max_thresh = ',pi_max_thresh)
+
+		elif self.safety == "potential":
+			self.a_max = 0.5
+			self.pi_max = 0.45
+			self.kp = 0.005 * 2.85
+			self.cbf_kp = 1.0
+
+		self.Delta_R = 2*self.a_max*self.sim_dt
+		self.a_min  = -self.a_max
+		self.pi_min = -self.pi_max
+
+		# obsolete
+		self.b_gamma = 0.005
+		self.b_exph = 1.0
+		
+		# old
+		self.D_robot = 1.*(self.r_agent+self.r_agent)
+		self.D_obstacle = 1.*(self.r_agent + self.r_obstacle)
+		self.circle_obstacles_on = True # square obstacles batch not implemented
+
 		# IL
-		self.il_load_loader_on = False
+		self.il_load_loader_on = True
 		# self.il_load_loader_on = False
-		self.training_time_downsample = 100
-		self.il_train_model_fn = '../results/singleintegrator/empty_2/il_current.pt'
+		self.training_time_downsample = 50
+		self.il_train_model_fn = '../models/singleintegrator/il_current.pt'
 		self.il_imitate_model_fn = '../models/singleintegrator/rl_current.pt'
 		self.il_load_dataset_on = True
 		self.il_test_train_ratio = 0.85
-		self.il_batch_size = 10000 #512 #5000
-		self.il_n_epoch = 250
+		self.il_batch_size = 4096*8
+		self.il_n_epoch = 20
 		self.il_lr = 1e-3
-		self.il_wd = 0 #0.0002
-		self.il_n_data = 1000000 # 100000 # 100000000
+		self.il_wd = 0 #0.0001
+		self.il_n_data = None # 100000 # 100000000
 		self.il_log_interval = 1
 		self.il_load_dataset = ['orca','centralplanner'] # 'random','ring','centralplanner'
 		self.il_controller_class = 'Barrier' # 'Empty','Barrier',
+		self.il_pretrain_weights_fn = None # None or path to *.tar file
 		
 		self.datadict = dict()
 		# self.datadict["4"] = 10000 #self.il_n_data
-		self.datadict["4"] = 10000 #10000000 #750000 #self.il_n_data
+		self.datadict["obst"] = 40000000 # 100000000000 #10000000 #750000 #self.il_n_data
 		# self.datadict["10"] = 10000000 #250000 #self.il_n_data
 		# self.datadict["15"] = 10000000 #250000 #self.il_n_data
 		# self.datadict["012"] = 1000000 #250000 #self.il_n_data
@@ -107,23 +144,10 @@ class SingleIntegratorParam(Param):
 		self.ad_train_model_fn = '../models/singleintegrator/ad_current.pt'
 
 		# Sim
-		self.sim_rl_model_fn = '../models/singleintegrator/rl_current.pt'
 		self.sim_il_model_fn = '../models/singleintegrator/il_current.pt'
-
-		# plots
-		self.vector_plot_dx = 0.25 		
-
-		# self.ad_tf = 25 #25
-		# self.ad_dt = 0.05
-		# self.ad_times = np.arange(self.sim_t0,self.sim_tf,self.sim_dt)
-
-		# 
-		# self.il_empty_model_fn = '../models/singleintegrator/empty.pt'
-		# self.il_barrier_model_fn = '../models/singleintegrator/barrier.pt'
-		# self.il_adaptive_model_fn = '../models/singleintegrator/adaptive.pt'
-
+	
 		# learning hyperparameters
-		n,m,h,l,p = 2,2,32,8,8 # state dim, action dim, hidden layer, output phi, output rho
+		n,m,h,l,p = 2,2,64,16,16 # state dim, action dim, hidden layer, output phi, output rho
 		self.il_phi_network_architecture = nn.ModuleList([
 			nn.Linear(2,h),
 			nn.Linear(h,h),
@@ -151,10 +175,6 @@ class SingleIntegratorParam(Param):
 
 		self.il_network_activation = relu
 
-		# Sim
-		self.sim_rl_model_fn = '../models/singleintegrator/rl_current.pt'
-		self.sim_il_model_fn = '../models/singleintegrator/il_current.pt'
-
 		# plots
 		self.vector_plot_dx = 0.3
 
@@ -165,9 +185,13 @@ def load_instance(param, env, instance):
 		with open(instance) as map_file:
 			map_data = yaml.load(map_file,Loader=yaml.SafeLoader)
 	else:
-		# test map 
-		ex = '0001' # 4 is hard 
-		with open("../results/singleintegrator/instances/map_8by8_obst6_agents4_ex{}.yaml".format(ex)) as map_file:
+		# default
+		# instance = "map_8by8_obst6_agents4_ex0007.yaml"
+		# instance = "map_8by8_obst12_agents64_ex0004.yaml"
+		# instance = "map_8by8_obst6_agents32_ex0000.yaml"
+		
+		# with open("../results/singleintegrator/instances/{}".format(instance)) as map_file:
+		with open("../results/singleintegrator/instances/{}".format(param.default_instance)) as map_file:
 		# test map test dataset
 			map_data = yaml.load(map_file)
 
@@ -195,16 +219,17 @@ def load_instance(param, env, instance):
 
 
 def run_batch(param, env, instance, controllers):
+	torch.set_num_threads(1)
 	s0 = load_instance(param, env, instance)
 	for name, controller in controllers.items():
 		print("Running simulation with " + name)
 
-		states, observations, actions, step = run_sim(param, env, controller, s0)
-		states_and_actions = np.zeros((step, states.shape[1] + actions.shape[1]), dtype=states.dtype)
-		states_and_actions[:,0::4] = states[:step,0::2]
-		states_and_actions[:,1::4] = states[:step,1::2]
-		states_and_actions[:,2::4] = actions[:step,0::2]
-		states_and_actions[:,3::4] = actions[:step,1::2]
+		states, observations, actions, step = run_sim(param, env, controller, s0, name=instance)
+		states_and_actions = np.zeros((step, 4*param.n_agents), dtype=np.float32)
+		states_and_actions[:,0::4] = states[:step,0::env.state_dim_per_agent]
+		states_and_actions[:,1::4] = states[:step,1::env.state_dim_per_agent]
+		states_and_actions[:,2::4] = actions[:step,0::env.action_dim_per_agent]
+		states_and_actions[:,3::4] = actions[:step,1::env.action_dim_per_agent]
 
 		result = np.hstack((param.sim_times[0:step].reshape(-1,1), states_and_actions))
 
@@ -227,25 +252,42 @@ if __name__ == '__main__':
 		exit()
 
 	controllers = {
-		# 'il':	torch.load(param.sim_il_model_fn),
-		# 'empty_2': Empty_Net_wAPF(param,env,torch.load(param.sim_il_model_fn)),
-		# 'empty': torch.load(param.il_empty_model_fn),
-		# 'ad':torch.load(param.ad_train_model_fn),
-		# 'adAPF': Empty_Net_wAPF(param,env,torch.load(param.ad_train_model_fn)),
-		#'emptywAPF' : Empty_Net_wAPF(param,env),
-		# 'barrier' : torch.load(param.sim_il_model_fn)
-		# 'e1M': torch.load('../models/singleintegrator/empty_1M_agent4_data.pt'),
-		# 'ad1M': torch.load('../models/singleintegrator/ad_current.pt'),
-		# 'e1M4APF' : Empty_Net_wAPF(param,env,torch.load('../models/singleintegrator/empty_1M_mixed.pt')),
-		# 'e1M4APF' : Empty_Net_wAPF(param,env,torch.load('../models/singleintegrator/empty_1M_agent4_data.pt')),
-		# 'barrier' : torch.load(param.il_barrier_model_fn),
-		# 'current': torch.load(param.il_train_model_fn),
-		'current_wsafety' : Empty_Net_wAPF(param,env,torch.load(param.il_train_model_fn))
+		# exp1 
+		# 'emptywapf': Empty_Net_wAPF(param,env,torch.load('../results/singleintegrator/exp1Empty_0/il_current.pt')),
+		# 'empty': torch.load('../results/singleintegrator/exp1Empty_0/il_current.pt'),
+		# 'barrier': torch.load('../results/singleintegrator/exp1Barrier_0/il_current.pt'),
+		# 
+		# testing
+		# 'apf': Empty_Net_wAPF(param,env,GoToGoalPolicy(param,env)),
+		'current': torch.load(param.il_train_model_fn),
+		# 'currentwapf': Empty_Net_wAPF(param,env,torch.load(param.il_train_model_fn)),
 	}
 
 	s0 = load_instance(param, env, args.instance)
 
 	if args.batch:
+		if args.controller:
+			controllers = dict()
+			for ctrl in args.controller:
+				name,kind,path = ctrl.split(',')
+				if kind == "EmptyAPF":
+					controllers[name] = Empty_Net_wAPF(param,env,torch.load(path))
+				elif kind == "torch":
+					controllers[name] = torch.load(path)
+				elif kind == "apf":
+					controllers[name] = Empty_Net_wAPF(param,env,GoToGoalPolicy(param,env))
+				else:
+					print("ERROR unknown ctrl kind", kind)
+					exit()
+
+		if args.Rsense:
+			param.r_comm = args.Rsense
+			param.r_obs_sense = args.Rsense
+		if args.maxNeighbors:
+			param.max_neighbors = args.maxNeighbors
+			param.max_obstacles = args.maxNeighbors
+		env.reset_param(param)
+
 		run_batch(param, env, args.instance, controllers)
 
 	# elif args.export:
@@ -253,5 +295,6 @@ if __name__ == '__main__':
 	# 	model.export_to_onnx("IL")
 
 	else:
+		torch.set_num_threads(1)
 		run(param, env, controllers, s0, args)
 
