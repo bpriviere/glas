@@ -4,11 +4,10 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
-from param import Param
 from run import run, parse_args
 from sim import run_sim
 from systems.singleintegrator import SingleIntegrator
-from other_policy import APF, Empty_Net_wAPF 
+from other_policy import Empty_Net_wAPF 
 
 # standard
 from torch import nn, tanh, relu
@@ -17,21 +16,15 @@ import numpy as np
 from collections import namedtuple
 import os
 
-class SingleIntegratorParam(Param):
+class SingleIntegratorParam():
 	def __init__(self):
-		super().__init__()
 		self.env_name = 'SingleIntegrator'
 		self.env_case = None
 
-		# 
+		# some path param 
 		self.preprocessed_data_dir = 'data/preprocessed_data/'
-
-		# flags
-		self.pomdp_on = True
-		self.single_agent_sim = False
-		self.multi_agent_sim = True
-		self.il_state_loss_on = False
-		self.sim_render_on = False
+		self.default_instance = "map_8by8_obst12_agents8_ex0000.yaml"
+		self.current_model = 'il_current.pt'
 
 		# orca param
 		self.n_agents = 1
@@ -48,66 +41,27 @@ class SingleIntegratorParam(Param):
 		self.sim_nt = len(self.sim_times)
 		self.plots_fn = 'plots.pdf'
 
-		# safety
-		self.safety = "cf_si_2" # "potential", "fdbk_si", "cf_si"
-		self.default_instance = "map_8by8_obst12_agents8_ex0000.yaml"
+		# speed/batching
 		self.rollout_batch_on = True
-
 		self.max_neighbors = 6
 		self.max_obstacles = 6
 
-		# Barrier function stuff
-		if self.safety == "cf_si":
-			self.a_max = 0.5
-			self.pi_max = 1.0
-			self.sigmoid_scale = 0.2
-			self.kp = 0.02 # 0.1
-			self.cbf_kp = 0.5 # (pi control is usually saturated)
-
-			# pimax = norm(b) = kp / h  @ |p^ji| = 0.05
-			# pi_max_thresh = self.kp / (0.2 - self.r_agent)
-			# print('pi_max_thresh = ',pi_max_thresh)
-			# print('pi_max = ',self.pi_max)
-
-		elif self.safety == "fdbk_si":
-			self.a_max = 0.5
-			self.pi_max = 0.45
-			self.kp = 0.005 
+		# safety
+		self.safety = "cf_si_2" 
+		if self.safety == "cf_si_2":
+			self.a_max = 0.5	
+			self.pi_max = 0.8	
+			self.kp = 1.5		
 			self.cbf_kp = 0.5
-
-		elif self.safety == "cf_si_2":
-			self.a_max = 0.5	# 0.5
-			self.pi_max = 0.8	# 0.5
-			self.kp = 1.5		# 1.0
-			self.cbf_kp = 0.5
-
 			self.epsilon = 0.01
-
 			pi_max_thresh = self.kp / (0.2 - self.r_agent) * 0.01 # 0.01 = epsilon
 			print('pi_max_thresh = ',pi_max_thresh)
-
-		elif self.safety == "potential":
-			self.a_max = 0.5
-			self.pi_max = 0.45
-			self.kp = 0.005 * 2.85
-			self.cbf_kp = 1.0
-
 		self.Delta_R = 2*self.a_max*self.sim_dt
 		self.a_min  = -self.a_max
 		self.pi_min = -self.pi_max
 
-		# obsolete
-		self.b_gamma = 0.005
-		self.b_exph = 1.0
-		
-		# old
-		self.D_robot = 1.*(self.r_agent+self.r_agent)
-		self.D_obstacle = 1.*(self.r_agent + self.r_obstacle)
-		self.circle_obstacles_on = True # square obstacles batch not implemented
-
-		# IL
+		# imitation learning param (IL)
 		self.il_load_loader_on = True
-		# self.il_load_loader_on = False
 		self.training_time_downsample = 50
 		self.il_train_model_fn = '../models/singleintegrator/il_current.pt'
 		self.il_imitate_model_fn = '../models/singleintegrator/rl_current.pt'
@@ -123,15 +77,11 @@ class SingleIntegratorParam(Param):
 		self.il_controller_class = 'Empty' # 'Empty','Barrier',
 		self.il_pretrain_weights_fn = None # None or path to *.tar file
 		
+		# dataset param 
+		# ex: only take 8 agent cases, stop after 10K points
 		self.datadict = dict()
-		self.datadict["8"] = 40000000 # 100000000000 #10000000 #750000 #self.il_n_data
+		self.datadict["8"] = 10000 # 100000000000 #10000000 #750000 #self.il_n_data
 
-		self.il_obst_case = 6
-		self.controller_learning_module = 'DeepSet' #
-
-		# Sim
-		self.sim_il_model_fn = '../models/singleintegrator/il_current.pt'
-	
 		# learning hyperparameters
 		n,m,h,l,p = 2,2,64,16,16 # state dim, action dim, hidden layer, output phi, output rho
 		self.il_phi_network_architecture = nn.ModuleList([
@@ -171,14 +121,7 @@ def load_instance(param, env, instance):
 		with open(instance) as map_file:
 			map_data = yaml.load(map_file,Loader=yaml.SafeLoader)
 	else:
-		# default
-		# instance = "map_8by8_obst6_agents4_ex0007.yaml"
-		# instance = "map_8by8_obst12_agents64_ex0004.yaml"
-		# instance = "map_8by8_obst6_agents32_ex0000.yaml"
-		
-		# with open("../results/singleintegrator/instances/{}".format(instance)) as map_file:
 		with open("../results/singleintegrator/instances/{}".format(param.default_instance)) as map_file:
-		# test map test dataset
 			map_data = yaml.load(map_file)
 
 	s = []
@@ -238,15 +181,11 @@ if __name__ == '__main__':
 		exit()
 
 	controllers = {
-		# exp1 
-		# 'emptywapf': Empty_Net_wAPF(param,env,torch.load('../results/singleintegrator/exp1Empty_0/il_current.pt')),
-		# 'empty': torch.load('../results/singleintegrator/exp1Empty_0/il_current.pt'),
-		# 'barrier': torch.load('../results/singleintegrator/exp1Barrier_0/il_current.pt'),
-		# 
-		# testing
+		'current':torch.load(param.il_train_model_fn),
+		# 'current_wapf': Empty_Net_wAPF(param,env,torch.load(param.il_train_model_fn)),
 		# 'apf': Empty_Net_wAPF(param,env,GoToGoalPolicy(param,env)),
-		'current': torch.load(param.il_train_model_fn),
-		# 'currentwapf': Empty_Net_wAPF(param,env,torch.load(param.il_train_model_fn)),
+		# 'e2e' : torch.load('../results/singleintegrator/exp1Barrier_0/il_current.pt'),
+		# '2stage' : Empty_Net_wAPF(param,env,torch.load('../results/singleintegrator/exp1Empty_0/il_current.pt')),
 	}
 
 	s0 = load_instance(param, env, args.instance)
@@ -276,9 +215,9 @@ if __name__ == '__main__':
 
 		run_batch(param, env, args.instance, controllers)
 
-	# elif args.export:
-	# 	model = torch.load(param.il_train_model_fn)
-	# 	model.export_to_onnx("IL")
+	elif args.export:
+		model = torch.load(param.il_train_model_fn)
+		model.export_to_onnx("IL")
 
 	else:
 		torch.set_num_threads(1)

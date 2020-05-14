@@ -45,10 +45,6 @@ class DoubleIntegrator(Env):
 		self.r_obs_sense = param.r_obs_sense
 		self.r_comm = param.r_comm 
 
-		# barrier stuff 
-		self.b_gamma = param.b_gamma
-		self.b_exph = param.b_exph
-
 		# control lim
 		self.a_min = param.a_min
 		self.a_max = param.a_max
@@ -141,12 +137,6 @@ class DoubleIntegrator(Env):
 			for k in obst_idx:
 				if k < self.obstacles_np.shape[0]:
 					relative_obstacles.append(self.obstacles_np[k,:] - p_i)
-					# closest = utilities.min_point_circle_rectangle(
-					# 	p_i,
-					# 	self.param.r_agent,
-					# 	self.obstacles_np[k,:] - np.array([0.5,0.5]),
-					# 	self.obstacles_np[k,:] + np.array([0.5,0.5]))
-					# relative_obstacles.append(closest - p_i)
 				else:
 					break
 
@@ -158,7 +148,6 @@ class DoubleIntegrator(Env):
 			idx = 1
 			obs_array[idx:idx+4] = relative_goal
 			idx += 4
-			# obs_array[4] = observation_i.time_to_goal
 			for i in range(num_neighbors):
 				obs_array[idx:idx+4] = relative_neighbors[i]
 				idx += 4
@@ -168,7 +157,6 @@ class DoubleIntegrator(Env):
 
 			oa_pairs.append((obs_array,np.zeros((self.action_dim_per_agent))))
 			observations.append(obs_array)
-			# observations.append(observation_i)
 
 		transformed_oa_pairs, _ = self.preprocess_transformation(oa_pairs)
 		observations = [o for (o,a) in transformed_oa_pairs]
@@ -185,12 +173,6 @@ class DoubleIntegrator(Env):
 				print('   a2a dist {} at time {} a {} and a {}'.format(dist,self.times[self.time_step], self.agents[result[0]].i, self.agents[result[1]].i))
 				# exit()
 			return -1
-
-		# check with respect to obstacles
-		# results = self.kd_tree_obstacles.query_ball_point(self.positions, self.r_agent + self.r_obstacle)
-		# for r in results:
-		# 	if len(r) > 0:
-		# 		return -1
 
 		for agent in self.agents:
 			for o in self.obstacles:
@@ -297,22 +279,7 @@ class DoubleIntegrator(Env):
 
 		self.update_agents(sp1)
 		return sp1
-		
-	def next_state_training_state_loss(self,s,a):
-		# input: ONE agent state, and ONE agent action
-		# output: increment of state
-		# used in train_il for state-loss function 
 
-		s = torch.from_numpy(s[0:self.state_dim_per_agent]).float()
-
-		dt = self.times[1]-self.times[0]
-		I = torch.eye((self.state_dim_per_agent))
-		A = torch.from_numpy(np.array((
-			[[0,0,1,0],[0,0,0,1],[0,0,0,0],[0,0,0,0]]))).float()
-		B = torch.from_numpy(np.array((
-			[[0,0],[0,0],[1,0],[0,1]]))).float()
-		sp1 = (I + A*dt)@s + B@a
-		return sp1		
 
 	def update_agents(self,s):
 		for agent_i in self.agents:
@@ -467,49 +434,6 @@ class DoubleIntegrator(Env):
 
 				dataset.append(np.hstack(transformed_oa_pairs[0]).flatten())
 
-				# o = Observation._make((
-				# 	relative_goal,
-				# 	time_to_goal,
-				# 	relative_neighbors,
-				# 	relative_obstacles))
-				# # a = data[t+1, i*4+3:i*4+5].clone().detach().numpy() # desired control is the velocity in the next timestep
-				# a = np.array(data[t+1, i*4+3:i*4+5], dtype=np.float32)
-				# oa_pair = Observation_Action_Pair._make((o,a))
-				# dataset.append(oa_pair)
-				# break
-
-		# print('Dataset Size: ',len(dataset))
-
-		# import plotter
-		# from matplotlib.patches import Rectangle, Circle
-		# robot = 0
-		# for item in dataset:
-		# 	fig,ax = plotter.make_fig()
-		# 	ax.set_title('State')
-		# 	ax.set_aspect('equal')
-
-		# 	ax.set_xlim([-1,10])
-		# 	ax.set_ylim([-1,10])
-
-		# 	# plot all obstacles
-		# 	for o in obstacles:
-		# 		ax.add_patch(Rectangle(o - torch.Tensor([0.5,0.5]), 1.0, 1.0, facecolor='gray', alpha=0.5))
-
-		# 	# plot current position
-		# 	s_g = data[-1,robot*4+1:robot*4+5]
-		# 	robot_pos = s_g - item.observation.relative_goal
-		# 	plotter.plot_circle(robot_pos[0], robot_pos[1],0.2,fig=fig,ax=ax)
-
-		# 	# plot current observation
-		# 	for i, obs in enumerate(item.observation.relative_obstacles):
-		# 		pos = obs + robot_pos[0:2] - torch.Tensor([0.5,0.5])
-		# 		ax.add_patch(Rectangle(pos, 1.0, 1.0, facecolor='gray', edgecolor='red', alpha=0.5))
-		# 		if i >= max_obstacles-1:
-		# 			break
-
-		# plotter.save_figs(filename + ".pdf")
-		# plotter.open_figs(filename + ".pdf")
-
 		return dataset
 
 
@@ -639,50 +563,3 @@ class DoubleIntegrator(Env):
 			self.obstacles.append([-1,y])
 			self.obstacles.append([instance["map"]["dimensions"][0],y])
 		return s0
-
-		
-	def bad_behavior(self, observations):
-		# penalize agent going too slowly when still too far from the goal 
-		v_min = 0.1
-		d_max = 0.5
-
-		# the observation already encodes the closest neighbors (sorted)
-		# => use the observation to check for collisions
-
-		bad_agents = set()
-		for obs, agent in zip(observations, self.agents):
-			num_neighbors = int(obs[0][0])
-			num_obstacles = int((obs.shape[1]-5-4*num_neighbors)/2)
-			if num_neighbors > 0:
-				closest_neighbor = obs[0,5:7]
-				d_ji = np.linalg.norm(closest_neighbor)
-				if d_ji < 2*self.r_agent:
-					print('collision between agents at t = {}'.format(self.param.sim_times[self.time_step]))
-					# the other agent will be found in another loop iteration efficiently
-					bad_agents.add(agent) 
-
-			if num_obstacles > 0:
-				closest_obstacle = obs[0,5+4*num_neighbors:5+4*num_neighbors+2]
-				if self.not_batch_is_collision_circle_rectangle(
-					np.zeros(2),
-					self.r_agent,
-					closest_obstacle - np.array([0.5,0.5]),
-					closest_obstacle + np.array([0.5,0.5])):
-					print('collision with obstacle at t = {}'.format(self.param.sim_times[self.time_step]))
-					bad_agents.add(agent)
-
-		# # low velocity and not at goal?
-		# for agent in self.agents:
-		# 	if np.linalg.norm(agent.v) < v_min and np.linalg.norm(agent.p - agent.s_g[0:2]) > d_max:
-		# 		print('agent {} too slow (v={})'.format(agent.i, np.linalg.norm(agent.v)))
-		# 		bad_agents.add(agent)
-
-		# end condition 
-		if self.time_step == self.param.sim_nt-1:
-			for agent in self.agents:
-				if np.linalg.norm(agent.p - agent.s_g[0:2]) > d_max:
-					print('agent {} did not reach goal'.format(agent.i))
-					bad_agents.add(agent)
-
-		return list(bad_agents)
-

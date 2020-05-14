@@ -31,70 +31,6 @@ import pprint
 
 pp = pprint.PrettyPrinter(indent=4)
 
-def rollout(model, env, param):
-	
-	keys = list(param.datadict.keys())
-	p = np.array([param.datadict[k] for k in keys])
-	p = p / np.sum(p)
-	agent_case = int(np.random.choice(keys,p=p))
-
-	instance = get_random_instance(agent_case,param.il_obst_case)
-	initial_state = env.instance_to_initial_state(instance)
-
-	observations = [] 
-	env.reset(initial_state)
-	for step, time in enumerate(param.sim_times[:-1]):
-
-		observation = env.observe()
-		action = model.policy(observation,env.transformations)
-		next_state, _, done, _ = env.step(action, compute_reward = False)
-
-		observations.append(observation)
-
-		agents = env.bad_behavior(observation)
-		past_l_observations = []
-		for agent in agents:
-			for past_l_observation in observations[-param.ad_l*param.ad_dl::param.ad_dl]: 
-				past_l_observations.append(past_l_observation[agent.i])
-
-		if len(agents) > 0:
-			return past_l_observations
-
-		if done: 
-			break
-
-	print('no bad behavior :)')
-	return [] 
-
-def get_dynamic_dataset(model, env, param,index):
-
-	# inputs:
-	#    - model
-	#    - environment
-	#    - param
-	
-	data = [] 
-	print('rollout')
-
-	while len(data) < param.ad_n_data_per_rollout:
-		with concurrent.futures.ProcessPoolExecutor() as executor:
-			for observation_i in executor.map(rollout, repeat(model,param.ad_n),repeat(env,param.ad_n),repeat(param,param.ad_n)):
-			# for observation_i in executor.map(rollout, repeat(model,param.ad_n),env_lst,repeat(param,param.ad_n)):
-				data.extend(index.query_lst(observation_i,param.ad_k))
-				print('rollout data: ',len(data))
-
-	# for i in range(param.ad_n):
-	# 	observation_i = rollout(model, env, param)
-	# 	data.extend(index.query_lst(observation_i,param.ad_k))
-
-
-	print('end rollout')
-
-	# print(len(data))
-	# exit()
-	return data 
-
-
 def make_loader(
 	env,
 	param,
@@ -227,83 +163,72 @@ def train_il(param, env, device):
 	print("Controller: ",param.il_controller_class)
 
 	# datasets
-	if True:
+	train_dataset = []
+	test_dataset = [] 
+	training = True 
+	total_dataset_size = 0
 
-		train_dataset = []
-		test_dataset = [] 
-		training = True 
-		total_dataset_size = 0
-	
-		if not param.il_load_loader_on:
+	if not param.il_load_loader_on:
 
-			shutil.rmtree('../{}'.format(param.preprocessed_data_dir))
-			os.mkdir('../{}'.format(param.preprocessed_data_dir))
+		shutil.rmtree('../{}'.format(param.preprocessed_data_dir))
+		os.mkdir('../{}'.format(param.preprocessed_data_dir))
 
-			for datapattern,num_data in param.datadict.items():
-				if param.env_name in ['SingleIntegrator']:
-					datadir = glob.glob("../data/training/singleintegrator/central/*{}*.npy".format(datapattern))
-				elif param.env_name in ['DoubleIntegrator']:
-					datadir = glob.glob("../data/training/doubleintegrator/central/*{}*.npy".format(datapattern))
-				random.shuffle(datadir)
+		for datapattern,num_data in param.datadict.items():
+			if param.env_name in ['SingleIntegrator']:
+				datadir = glob.glob("../data/training/singleintegrator/central/*{}*.npy".format(datapattern))
+			elif param.env_name in ['DoubleIntegrator']:
+				datadir = glob.glob("../data/training/doubleintegrator/central/*{}*.npy".format(datapattern))
+			random.shuffle(datadir)
 
-				# # Filter by modification time
-				# datadir_filtered = []
-				# for file in datadir:
-				# 	file_time = time.localtime(os.path.getmtime(file))
-				# 	if file_time.tm_mon < 2:
-				# 		datadir_filtered.append(file)
+			len_case = 0
+			with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count()) as executor:
+				for dataset in executor.map(env.load_dataset_action_loss, datadir):
+			# for file in datadir:
+				# dataset = env.load_dataset_action_loss(file)
+					if np.random.uniform(0, 1) <= param.il_test_train_ratio:
+						train_dataset.extend(dataset)
+					else:
+						test_dataset.extend(dataset)
 
-				# datadir = datadir_filtered
+					len_case += len(dataset)
+					print('num_agents,len_case = {},{}'.format(datapattern,len_case))
 
-				len_case = 0
-				with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count()) as executor:
-					for dataset in executor.map(env.load_dataset_action_loss, datadir):
-				# for file in datadir:
-					# dataset = env.load_dataset_action_loss(file)
-						if np.random.uniform(0, 1) <= param.il_test_train_ratio:
-							train_dataset.extend(dataset)
-						else:
-							test_dataset.extend(dataset)
+					if len_case > num_data:
+						break
 
-						len_case += len(dataset)
-						print('num_agents,len_case = {},{}'.format(datapattern,len_case))
+		print('Total Training Dataset Size: ',len(train_dataset))
+		print('Total Testing Dataset Size: ',len(test_dataset))
 
-						if len_case > num_data:
-							break
+		loader_train = make_loader(
+			env,
+			param,
+			dataset=train_dataset,
+			shuffle=True,
+			batch_size=param.il_batch_size,
+			n_data=param.il_n_data,
+			name = "train",
+			device=device)
 
-			print('Total Training Dataset Size: ',len(train_dataset))
-			print('Total Testing Dataset Size: ',len(test_dataset))
+		loader_test = make_loader(
+			env,
+			param,
+			dataset=test_dataset,
+			shuffle=True,
+			batch_size=param.il_batch_size,
+			n_data=param.il_n_data,
+			name = "test",
+			device=device)
 
-			loader_train = make_loader(
-				env,
-				param,
-				dataset=train_dataset,
-				shuffle=True,
-				batch_size=param.il_batch_size,
-				n_data=param.il_n_data,
-				name = "train",
-				device=device)
-
-			loader_test = make_loader(
-				env,
-				param,
-				dataset=test_dataset,
-				shuffle=True,
-				batch_size=param.il_batch_size,
-				n_data=param.il_n_data,
-				name = "test",
-				device=device)
-
-		else:
-			loader_train = load_loader("train",param.il_batch_size,device,param)
-			# loader_train = load_loader("adaptive",param.il_batch_size)
-			loader_test  = load_loader("test",param.il_batch_size,device,param)
+	else:
+		loader_train = load_loader("train",param.il_batch_size,device,param)
+		# loader_train = load_loader("adaptive",param.il_batch_size)
+		loader_test  = load_loader("test",param.il_batch_size,device,param)
 
 	# init model
 	if param.il_controller_class is 'Barrier':
-		model = Barrier_Net(param,param.controller_learning_module).to(device)
+		model = Barrier_Net(param).to(device)
 	elif param.il_controller_class is 'Empty':
-		model = Empty_Net(param,param.controller_learning_module).to(device)
+		model = Empty_Net(param).to(device)
 	else:
 		print('Error in Train Gains, programmatic controller not recognized')
 		exit()
@@ -312,8 +237,6 @@ def train_il(param, env, device):
 		model.load_weights(param.il_pretrain_weights_fn)
 
 	optimizer = torch.optim.Adam(model.parameters(), lr=param.il_lr, weight_decay = param.il_wd)
-	# optimizer = torch.optim.AdamW(model.parameters(), lr=param.il_lr, weight_decay = param.il_wd)
-	# optimizer = torch.optim.SGD(model.parameters(), lr=param.il_lr, momentum=0.9,weight_decay = param.il_wd)
 
 	with open(param.il_train_model_fn + ".csv", 'w') as log_file:
 		log_file.write("time,epoch,train_loss,test_loss\n")

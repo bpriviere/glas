@@ -163,7 +163,8 @@ if __name__ == "__main__":
       datadir.extend(glob.glob("doubleintegrator/instances/*obst{}_agents{}_*".format(obst,agents)))
   instances = sorted(datadir)
 
-  first_training = True
+  # first_training = True
+  first_training = False
 
   for i in range(1):
       # train policy

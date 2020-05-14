@@ -10,6 +10,7 @@ from collections import namedtuple
 # my package
 from matplotlib.patches import Rectangle, Circle
 import utilities as util
+import plotter
 
 def run_sim(param, env, controller, initial_state, name=None):
 	states = np.empty((len(param.sim_times), env.n))
@@ -99,21 +100,13 @@ def sim(param, env, controllers, initial_state, visualize):
 						V.append(result.states[k,env.agent_idx_to_state_idx(agent.i)+3])
 
 				ax.quiver(X,Y,U,V,angles='xy', scale_units='xy',scale=0.5,color=color,width=0.005)
-
-				# num_obstacles = (result.observations.shape[1] - result.observations[0][0] - 5) / 2
-				# print(num_obstacles)
-# 
-				# print(result.observations)
-
 				plotter.plot_circle(result.states[1,env.agent_idx_to_state_idx(agent.i)],
 					result.states[1,env.agent_idx_to_state_idx(agent.i)+1],param.r_agent,fig=fig,ax=ax,color=color)
-				# plotter.plot_square(result.states[-1,env.agent_idx_to_state_idx(agent.i)],
-				# 	result.states[-1,env.agent_idx_to_state_idx(agent.i)+1],param.r_agent,fig=fig,ax=ax,color=color)
 				plotter.plot_square(agent.s_g[0],agent.s_g[1],param.r_agent,angle=45,fig=fig,ax=ax,color=color)
 
 			# draw state for each time step
 			robot = 0
-			if param.env_name in ['SingleIntegrator','SingleIntegratorVelSensing']:
+			if param.env_name in ['SingleIntegrator']:
 				for step in np.arange(0, result.steps, 1000):
 					fig,ax = plotter.make_fig()
 					ax.set_title('State at t={} for robot={}'.format(times[step], robot))
@@ -219,59 +212,9 @@ def sim(param, env, controllers, initial_state, visualize):
 					# plot velocity vectors
 					ax.quiver(X,Y,U,V,angles='xy', scale_units='xy',scale=0.5,color='red',width=0.005)
 
-		elif param.env_name == 'Consensus' and param.sim_render_on:
-			env.render()
-		elif param.sim_render_on:
-			env.render()
-	
+
 		# plot time varying states
-		if param.single_agent_sim:
-			for i in range(env.n):
-				fig, ax = plotter.subplots()
-				ax.set_title(env.states_name[i])
-				for result in sim_results:
-					ax.plot(times[0:result.steps], result.states[0:result.steps,i],label=result.name)
-				ax.legend()
-
-			for i, name in enumerate(env.deduced_state_names):
-				fig, ax = plotter.subplots()
-				ax.set_title(name)
-				for result in sim_results:
-					deduce_states = np.empty((result.steps, len(env.deduced_state_names)))
-					for j in range(result.steps):
-						deduce_states[j] = env.deduce_state(result.states[j])
-
-					ax.plot(times[0:result.steps], deduce_states[:,i],label=result.name)
-				ax.legend()
-
-			for i in range(env.m):
-				fig, ax = plotter.subplots()
-				ax.set_title(env.actions_name[i])
-				for result in sim_results:
-					ax.plot(times[0:result.steps], result.actions[0:result.steps,i],label=result.name)
-				ax.legend()
-
-		elif param.env_name == 'Consensus':
-			for i_config in range(1): #range(env.state_dim_per_agent):
-				fig,ax = plotter.make_fig()
-				# ax.set_title(env.states_name[i_config])
-				for agent in env.agents:
-					if env.good_nodes[agent.i]:
-						color = 'blue'
-					else:
-						color = 'red'
-					for result in sim_results:
-						ax.plot(
-							times[0:result.steps],
-							result.states[0:result.steps,env.agent_idx_to_state_idx(agent.i)+i_config],
-							label=result.name,
-							color=color)
-				ax.axhline(
-					env.desired_ave,
-					label='desired',
-					color='green')
-
-		elif param.env_name in ['SingleIntegrator','DoubleIntegrator']:
+		if param.env_name in ['SingleIntegrator','DoubleIntegrator']:
 			for i_config in range(env.state_dim_per_agent):
 				fig,ax = plotter.make_fig()
 				ax.set_title(env.states_name[i_config])
@@ -281,7 +224,6 @@ def sim(param, env, controllers, initial_state, visualize):
 							times[1:result.steps],
 							result.states[1:result.steps,env.agent_idx_to_state_idx(agent.i)+i_config],
 							label=result.name)
-
 
 		# plot time varying actions
 		if param.env_name in ['SingleIntegrator','DoubleIntegrator']:
@@ -298,50 +240,6 @@ def sim(param, env, controllers, initial_state, visualize):
 						# 
 						if i_config == 5:
 							ax.set_yscale('log')
-				
-		# extract gains
-		if name in ['PID_wRef','PID']:
-			controller = controllers['IL']
-			for result in sim_results:
-				if result.name == 'IL':
-					break
-			kp,kd = util.extract_gains(controller,result.states[0:result.steps])
-			fig,ax = plotter.plot(times[1:result.steps],kp[0:result.steps,0],title='Kp pos')
-			fig,ax = plotter.plot(times[1:result.steps],kp[0:result.steps,1],title='Kp theta')
-			fig,ax = plotter.plot(times[1:result.steps],kd[0:result.steps,0],title='Kd pos')
-			fig,ax = plotter.plot(times[1:result.steps],kd[0:result.steps,1],title='Kd theta')
-
-		# extract reference trajectory
-		if name in ['PID_wRef','Ref']:
-			controller = controllers['IL']
-			for result in sim_results:
-				if result.name == 'IL':
-					break
-			ref_state = util.extract_ref_state(controller, result.states)
-			for i in range(env.n):
-				fig,ax = plotter.plot(times[1:result.steps+1],ref_state[0:result.steps,i],title="ref " + env.states_name[i])
-
-		# extract belief topology
-		if name in ['IL'] and param.env_name is 'Consensus':
-			for result in sim_results:
-				if result.name == 'IL':
-					break
-
-			fig,ax = plotter.make_fig()
-			belief_topology = util.extract_belief_topology(controller, result.observations)
-			label_on = True
-			if param.n_agents*param.n_agents > 10:
-				label_on = False
-			for i_agent in range(param.n_agents):
-				for j_agent in range(param.n_agents):
-					if not i_agent == j_agent and env.good_nodes[i_agent]:
-						if label_on:
-							plotter.plot(times[0:result.steps+1],belief_topology[:,i_agent,j_agent],
-								fig=fig,ax=ax,label="K:{}{}".format(i_agent,j_agent))
-						else:
-							plotter.plot(times[0:result.steps+1],belief_topology[:,i_agent,j_agent],
-								fig=fig,ax=ax)
-
 
 	plotter.save_figs(param.plots_fn)
 	plotter.open_figs(param.plots_fn)

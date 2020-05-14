@@ -15,26 +15,24 @@ from learning.feedforward import FeedForward
 
 class Empty_Net(nn.Module):
 
-	def __init__(self,param,learning_module):
+	def __init__(self,param):
 		super(Empty_Net, self).__init__()
 
-		if learning_module is "DeepSet":
-
-			self.model_neighbors = DeepSet(
-				param.il_phi_network_architecture,
-				param.il_rho_network_architecture,
-				param.il_network_activation,
-				param.env_name
-				)
-			self.model_obstacles = DeepSetObstacles(
-				param.il_phi_obs_network_architecture,
-				param.il_rho_obs_network_architecture,
-				param.il_network_activation,
-				param.env_name
-				)
-			self.psi = FeedForward(
-				param.il_psi_network_architecture,
-				param.il_network_activation)
+		self.model_neighbors = DeepSet(
+			param.il_phi_network_architecture,
+			param.il_rho_network_architecture,
+			param.il_network_activation,
+			param.env_name
+			)
+		self.model_obstacles = DeepSetObstacles(
+			param.il_phi_obs_network_architecture,
+			param.il_rho_obs_network_architecture,
+			param.il_network_activation,
+			param.env_name
+			)
+		self.psi = FeedForward(
+			param.il_psi_network_architecture,
+			param.il_network_activation)
 
 		self.param = param
 		self.device = torch.device('cpu')
@@ -92,12 +90,6 @@ class Empty_Net(nn.Module):
 
 		return A
 
-		# A = np.empty((len(x),self.dim_action))
-		# for i,x_i in enumerate(x):
-		# 	a_i = self(torch.Tensor(x_i))
-		# 	a_i = a_i.detach().numpy()
-		# 	A[i,:] = a_i
-		# return A
 
 	def export_to_onnx(self, filename):
 		self.model_neighbors.export_to_onnx("{}_neighbors".format(filename))

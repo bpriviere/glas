@@ -16,7 +16,7 @@ from barrier_fncs import Barrier_Fncs
 
 class Barrier_Net(nn.Module):
 
-	def __init__(self,param,learning_module):
+	def __init__(self,param):
 		super(Barrier_Net, self).__init__()
 		self.model_neighbors = DeepSet(
 			param.il_phi_network_architecture,
@@ -116,53 +116,7 @@ class Barrier_Net(nn.Module):
 
 		if type(x) == torch.Tensor:
 
-			if self.param.safety == "potential":
-				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
-				barrier_action = -1*self.param.kp*self.bf.torch_get_grad_phi(x,P,H)
-				
-				empty_action = self.empty(x)
-				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
-				
-				adaptive_scaling = self.bf.torch_get_adaptive_scaling_si(x,empty_action,barrier_action,P,H)
-				action = torch.mul(adaptive_scaling,empty_action)+barrier_action 
-				action = self.bf.torch_scale(action, self.param.a_max)
-
-			elif self.param.safety == "fdbk_si":
-				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.bf.torch_fdbk_si(x,P,H)
-								
-				empty_action = self.empty(x)
-				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
-				
-				adaptive_scaling = self.bf.torch_get_adaptive_scaling_si(x,empty_action,barrier_action,P,H)
-				action = torch.mul(adaptive_scaling,empty_action)+barrier_action 
-				action = self.bf.torch_scale(action, self.param.a_max)				
-
-			elif self.param.safety == "fdbk_di":
-				
-				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.bf.torch_fdbk_di(x,P,H)
-								
-				empty_action = self.empty(x)
-				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
-				
-				adaptive_scaling = self.bf.torch_get_adaptive_scaling_di(x,empty_action,barrier_action,P,H)
-				action = torch.mul(adaptive_scaling,empty_action)+barrier_action 
-				action = self.bf.torch_scale(action, self.param.a_max)
-
-			elif self.param.safety == "cf_si":
-
-				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.bf.torch_fdbk_si(x,P,H)
-
-				empty_action = self.empty(x)
-				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
-
-				cf_alpha = self.bf.torch_get_cf_si(x,P,H,empty_action,barrier_action)
-				action = torch.mul(cf_alpha,empty_action) + torch.mul(1-cf_alpha,barrier_action)
-				action = self.bf.torch_scale(action, self.param.a_max)
-
-			elif self.param.safety == "cf_si_2":
+			if self.param.safety == "cf_si_2":
 
 				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
 				barrier_action = self.bf.torch_fdbk_si(x,P,H)
@@ -173,18 +127,6 @@ class Barrier_Net(nn.Module):
 				cf_alpha = self.bf.torch_get_cf_si_2(x,empty_action,barrier_action,P,H)
 				action = torch.mul(cf_alpha,empty_action) + torch.mul(1-cf_alpha,barrier_action)
 				action = self.bf.torch_scale(action, self.param.a_max)				
-
-			elif self.param.safety == "cf_di":
-
-				P,H = self.bf.torch_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.bf.torch_fdbk_di(x,P,H)
-
-				empty_action = self.empty(x)
-				empty_action = self.bf.torch_scale(empty_action, self.param.pi_max)
-
-				cf_alpha = self.bf.torch_get_cf_di(x,P,H,empty_action,barrier_action)
-				action = torch.mul(cf_alpha,empty_action) + torch.mul(1-cf_alpha,barrier_action)
-				action = self.bf.torch_scale(action, self.param.a_max)
 
 			elif self.param.safety == "cf_di_2":
 
@@ -198,68 +140,13 @@ class Barrier_Net(nn.Module):
 				action = torch.mul(cf_alpha,empty_action) + torch.mul(1-cf_alpha,barrier_action)
 				action = self.bf.torch_scale(action, self.param.a_max)
 
-				# print('P',P)
-				# print('H',H)
-				# print('grad_phi',self.bf.torch_get_grad_phi(x,P,H))
-				# print('grad_phi_dot',self.bf.torch_get_grad_phi_dot(x,P,H))
-				# print('cf_alpha',cf_alpha)
-				# print('barrier_action',barrier_action)
-				# print('action',action)
-
 			else:
 				exit('self.param.safety: {} not recognized'.format(self.param.safety))
 
 
 		elif type(x) is np.ndarray:
 
-			if self.param.safety == "potential":
-				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
-				barrier_action = -1*self.param.b_gamma*self.bf.numpy_get_grad_phi(x,P,H)
-
-				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
-				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
-
-				adaptive_scaling = self.bf.numpy_get_adaptive_scaling_si(x,empty_action,barrier_action,P,H)
-				action = adaptive_scaling*empty_action+barrier_action 
-				action = self.bf.numpy_scale(action, self.param.a_max)
-
-			elif self.param.safety == "fdbk_si":
-
-				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.bf.numpy_fdbk_si(x,P,H)
-
-				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
-				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
-
-				adaptive_scaling = self.bf.numpy_get_adaptive_scaling_si(x,empty_action,barrier_action,P,H)
-				action = adaptive_scaling*empty_action+barrier_action 
-				action = self.bf.numpy_scale(action, self.param.a_max)				
-
-			elif self.param.safety == "fdbk_di":
-
-				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.bf.numpy_fdbk_di(x,P,H)
-
-				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
-				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
-
-				adaptive_scaling = self.bf.numpy_get_adaptive_scaling_di(x,empty_action,barrier_action,P,H)
-				action = adaptive_scaling*empty_action + barrier_action 
-				action = self.bf.numpy_scale(action, self.param.a_max)
-
-			elif self.param.safety == "cf_si":
-
-				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.bf.numpy_fdbk_si(x,P,H)
-
-				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
-				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
-
-				cf_alpha = self.bf.numpy_get_cf_si(x,P,H,empty_action,barrier_action)
-				action = cf_alpha*empty_action + (1-cf_alpha)*barrier_action 
-				action = self.bf.numpy_scale(action, self.param.a_max)
-
-			elif self.param.safety == "cf_si_2":
+			if self.param.safety == "cf_si_2":
 
 				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
 				barrier_action = self.bf.numpy_fdbk_si(x,P,H)
@@ -271,39 +158,17 @@ class Barrier_Net(nn.Module):
 				action = cf_alpha*empty_action + (1-cf_alpha)*barrier_action 
 				action = self.bf.numpy_scale(action, self.param.a_max)				
 
-			elif self.param.safety == "cf_di":
-
-				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
-				barrier_action = self.bf.numpy_fdbk_di(x,P,H)
-
-				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
-				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
-
-				cf_alpha = self.bf.numpy_get_cf_di(x,P,H,empty_action,barrier_action)
-				action = cf_alpha*empty_action + (1-cf_alpha)*barrier_action 
-				action = self.bf.numpy_scale(action, self.param.a_max)
-
 			elif self.param.safety == "cf_di_2":
 
 				P,H = self.bf.numpy_get_relative_positions_and_safety_functions(x)
 				barrier_action = self.bf.numpy_fdbk_di(x,P,H)
 
 				empty_action = self.empty(torch.tensor(x).float()).detach().numpy()
-				# print('empty_action',empty_action)
 				empty_action = self.bf.numpy_scale(empty_action, self.param.pi_max)
 
 				cf_alpha = self.bf.numpy_get_cf_di_2(x,P,H,empty_action,barrier_action)
 				action = cf_alpha*empty_action + (1-cf_alpha)*barrier_action 
 				action = self.bf.numpy_scale(action, self.param.a_max)				
-
-				# print('P',P)
-				# print('H',H)
-				# print('grad_phi',self.bf.numpy_get_grad_phi(x,P,H))
-				# print('grad_phi_dot',self.bf.numpy_get_grad_phi_dot(x,P,H))
-				# print('cf_alpha',cf_alpha)
-				# print('barrier_action',barrier_action)
-				# print('action',action)
-				# exit()
 
 			else:
 				exit('self.param.safety: {} not recognized'.format(self.param.safety))
