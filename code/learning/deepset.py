@@ -29,39 +29,6 @@ class DeepSet(nn.Module):
 		self.rho.export_to_onnx("{}_rho".format(filename))
 
 	def forward(self,x):
-
-		if self.env_name == 'Consensus':
-			return self.consensus_forward(x)
-		elif self.env_name in ['SingleIntegrator','DoubleIntegrator','SingleIntegratorVelSensing']:
-			return self.si_forward(x)
-
-	def consensus_forward(self,x):
-
-		# x is a relative neighbor histories 
-		# RHO_IN = torch.zeros((1,self.rho.in_dim))
-
-		summ = torch.zeros((self.phi.out_dim))
-		for step_rnh, rnh in enumerate(x):
-
-			if step_rnh == 0:
-				self_history = np.array(rnh, ndmin=1)
-				self_history = torch.from_numpy(self_history).float()
-			else:
-				rnh = np.array(rnh, ndmin=1)
-				rnh = torch.from_numpy(rnh).float()
-				summ += self.phi(rnh)
-
-		# print(self_history.shape)
-		# print(summ.shape)
-		# print(torch.cat((self_history,summ)))
-		# exit()
-
-		RHO_IN = torch.cat((self_history,summ))
-		RHO_OUT = self.rho(RHO_IN)
-		return RHO_OUT
-
-	def si_forward(self,x):
-		# print(x)
 		X = torch.zeros((len(x),self.rho.in_dim), device=self.device)
 		num_elements = int(x.size()[1] / self.phi.in_dim)
 		for i in range(num_elements):

@@ -25,27 +25,19 @@ Note that the example instance files are regular yaml files, containing a list o
 NOTE: This section is still work in progress!
 
 
-1. Install the necessary dependencies with conda:
+1. Install the necessary dependencies with conda (in progress, for now, you have to do install necessary packages manually):
     ```bash
     conda env create --file environment.yml
     conda activate glas_env
     ```
-2. create training dataset 
+2. Train and evaluate single model examples (in ~/code):
     ```bash
-    # make instance files (in ~/data/singleintegrator/instances)
-    python ../../baseline/centralized-planner/genRandomMAPF.py
-    # run central planner solution (in ~/data/singleintegrator/)
-	python runAll.py --central 
+    python examples/run_singleintegrator --il 
+    python examples/run_singleintegrator
     ```
-3. train policy with Imitation Learning (in ~/results)
+4. Train, evaluate, and visualize batched model examples (in ~/results):
     ```bash
-	python3 singleintegrator/exp1.py --train
-    ```
-4. simulate policy on test cases (in ~/results)
-    ```bash
-	python3 singleintegrator/exp1.py --sim
-    ```
-5. plot results (in ~/results)
-    ```bash
-	python3 singleintegrator/exp1.py --plot
-    ```
+    python singleintegrator/exp1.py --train
+    python singleintegrator/exp1.py --sim
+    python singleintegrator/exp1.py --plot
+    ```    
